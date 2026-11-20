@@ -23,8 +23,8 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 22
-        versionName = "1.6.2"
+        versionCode = 1
+        versionName = "0.1.0"
     }
 
     val releaseStorePath = signingProps.getProperty("STORE_FILE", "fileexplorer.jks")

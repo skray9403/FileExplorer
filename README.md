@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-dev-6750A4)](https://github.com/skray9403/FileExplorer/releases)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/SysAdminDoc/FileExplorer?logo=github)](https://github.com/skray9403/FileExplorer/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/skray9403/FileExplorer?logo=github)](https://github.com/skray9403/FileExplorer/stargazers)
 
 <p align="center">
   <a href="https://ko-fi.com/X8K126YVER">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <sub><em>If FileExplorer earns a place on your phone, a coffee helps me keep it tested and maintained.</em></sub>
+  <sub><em>Folio is a community-led fork. See the upstream project for original development and attribution.</em></sub>
 </p>
 
 ![FileExplorer brings local, root, network, and cloud files into one Android workspace](assets/marketing/hero.png)
@@ -25,7 +25,7 @@ No ads. No behavioral analytics. Local file work does not require an account.
 
 ## See it in action
 
-These screens come from a real Android emulator running FileExplorer.
+These inherited upstream screenshots illustrate retained capabilities; they are not screenshots of the Folio redesign.
 
 <table>
   <tr>
@@ -61,20 +61,9 @@ These screens come from a real Android emulator running FileExplorer.
 
 The [capability guide](docs/CAPABILITIES.md) separates ready features from those that need root, another service, hardware, or external credentials.
 
-## Install
+## Build status
 
-### Download a release
-
-1. Open the [latest release](https://github.com/skray9403/FileExplorer/releases).
-2. Download `FileExplorer-v1.6.2.apk` and its checksum file.
-3. Allow installation from your browser or file manager if Android asks.
-4. Open FileExplorer and choose full shared-storage access or limited app-storage mode.
-
-Release APKs are signed. The release page includes SHA-256 checksums and the signing certificate fingerprint so you can verify what you install.
-
-### Storage access
-
-Android 11 and newer require All Files Access for a traditional file manager to browse all shared storage. If you decline, FileExplorer stays usable inside its app-specific folder and through Android's system picker. Root is optional.
+Folio is under active development. The upstream FileExplorer APK is not a Folio build and must not be installed as one. Debug APKs are published from the Folio GitHub Actions workflow after CI succeeds; signed release builds will be added separately.
 
 ## Connections and optional features
 
