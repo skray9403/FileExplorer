@@ -458,6 +458,13 @@ fun BrowserScreen(
                                             onSwipeLeft = { viewModel.applySwipe(item, state.swipeLeftAction) },
                                             onSwipeRight = { viewModel.applySwipe(item, state.swipeRightAction) },
                                         )
+                                        if (item != state.files.lastOrNull()) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = 68.dp, end = 16.dp),
+                                                thickness = 0.5.dp,
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                            )
+                                        }
                                     }
                                 }
                             }
