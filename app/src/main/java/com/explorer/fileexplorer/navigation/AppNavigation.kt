@@ -124,6 +124,7 @@ fun AppNavigation(
                 ) {
                     FolioNavigationDock(
                         selectedIndex = selectedDockIndex,
+                        onSearch = { navController.navigate(Routes.SEARCH) },
                         onDestinationSelected = { index ->
                             val route = dockRoutes.getOrNull(index) ?: return@FolioNavigationDock
                             navController.navigate(route) {
