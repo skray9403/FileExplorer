@@ -1,9 +1,9 @@
-# FileExplorer
+# Folio
 
-[![Version](https://img.shields.io/badge/version-1.6.2-00BCD4)](https://github.com/SysAdminDoc/FileExplorer/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.1.0-dev-6750A4)](https://github.com/skray9403/FileExplorer/releases)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/SysAdminDoc/FileExplorer?logo=github)](https://github.com/SysAdminDoc/FileExplorer/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/SysAdminDoc/FileExplorer?logo=github)](https://github.com/skray9403/FileExplorer/stargazers)
 
 <p align="center">
   <a href="https://ko-fi.com/X8K126YVER">
@@ -17,11 +17,11 @@
 
 ![FileExplorer brings local, root, network, and cloud files into one Android workspace](assets/marketing/hero.png)
 
-FileExplorer is an open-source Android file manager for people who need more than a basic document picker. It brings local storage, root folders, archives, remote shares, and optional cloud accounts into one workspace. A built-in editor, storage analyzer, app manager, encrypted vault, and recoverable transfer queue handle the jobs that usually require several apps.
+Folio is a Material 3 Expressive redesign and feature-preserving fork of [SysAdminDoc/FileExplorer](https://github.com/SysAdminDoc/FileExplorer), an open-source Android file manager for people who need more than a basic document picker. It brings local storage, root folders, archives, remote shares, and optional cloud accounts into one workspace. A built-in editor, storage analyzer, app manager, encrypted vault, and recoverable transfer queue handle the jobs that usually require several apps.
 
 No ads. No behavioral analytics. Local file work does not require an account.
 
-[Download the signed APK](https://github.com/SysAdminDoc/FileExplorer/releases/download/v1.6.2/FileExplorer-v1.6.2.apk) · [See what changed](CHANGELOG.md) · [Review every capability](docs/CAPABILITIES.md)
+[Folio releases](https://github.com/skray9403/FileExplorer/releases) · [Upstream project](https://github.com/SysAdminDoc/FileExplorer) · [Review every capability](docs/CAPABILITIES.md)
 
 ## See it in action
 
@@ -65,7 +65,7 @@ The [capability guide](docs/CAPABILITIES.md) separates ready features from those
 
 ### Download a release
 
-1. Open the [latest release](https://github.com/SysAdminDoc/FileExplorer/releases/latest).
+1. Open the [latest release](https://github.com/skray9403/FileExplorer/releases).
 2. Download `FileExplorer-v1.6.2.apk` and its checksum file.
 3. Allow installation from your browser or file manager if Android asks.
 4. Open FileExplorer and choose full shared-storage access or limited app-storage mode.
@@ -147,3 +147,14 @@ Bug reports and focused pull requests are welcome. Include the Android version, 
 ## License
 
 [MIT](LICENSE)
+
+
+## Folio design direction
+
+Folio's interface is being rebuilt around the stable Jetpack Compose November 2026 release and Material 3 Expressive. The visual and motion reference is the persistent floating navigation dock, expressive surface treatment, dynamic colour handling, and restrained spring transitions implemented in [Monomail](https://github.com/skray9403/monomail).
+
+The first implementation stage keeps the existing feature modules and file-operation workflows intact. The navigation drawer remains the complete entry point for specialist tools; the floating dock is a shortcut for Browse, Network, Collections, and Transfers. Root, Shizuku, USB, archive, cloud, security, editor, app-manager, and storage-analysis capabilities remain part of the project.
+
+**Application ID:** `com.skray.folio`  
+**Minimum Android:** 8.0 (API 26)  
+**Builds:** GitHub Actions only. Debug APKs are published as workflow artifacts; no local or on-device compilation is required.
