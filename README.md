@@ -1,6 +1,6 @@
-# FileExplorer
+# Folio
 
-[![Version](https://img.shields.io/badge/version-1.6.2-00BCD4)](https://github.com/SysAdminDoc/FileExplorer/releases/latest)
+[![Build](https://img.shields.io/badge/build-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/skray9403/FileExplorer/actions)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/SysAdminDoc/FileExplorer?logo=github)](https://github.com/SysAdminDoc/FileExplorer/stargazers)
@@ -21,7 +21,7 @@ FileExplorer is an open-source Android file manager for people who need more tha
 
 No ads. No behavioral analytics. Local file work does not require an account.
 
-[Download the signed APK](https://github.com/SysAdminDoc/FileExplorer/releases/download/v1.6.2/FileExplorer-v1.6.2.apk) · [See what changed](CHANGELOG.md) · [Review every capability](docs/CAPABILITIES.md)
+[Builds and artifacts](https://github.com/skray9403/FileExplorer/actions) · [See what changed](CHANGELOG.md) · [Review every capability](docs/CAPABILITIES.md)
 
 ## See it in action
 
@@ -117,10 +117,10 @@ Read [SECURITY.md](SECURITY.md) for the threat boundaries, permission rationale,
 
 ## Build it
 
-Use Android SDK 36 and JDK 21. The project has 19 Gradle modules and targets JVM 17 bytecode.
+Use Android SDK 37 and JDK 21. The project has 19 Gradle modules and targets JVM 17 bytecode.
 
 ```powershell
-git clone https://github.com/SysAdminDoc/FileExplorer.git
+git clone https://github.com/skray9403/FileExplorer.git
 cd FileExplorer
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot"
 .\gradlew.bat --no-daemon --console=plain :app:assembleDebug
