@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun FolioNavigationDock(
+    selectedDestination: String,
+    onBrowse: () -> Unit,
     onTransfers: () -> Unit,
     onNetwork: () -> Unit,
     onCollections: () -> Unit,
@@ -64,8 +66,8 @@ fun FolioNavigationDock(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 NavigationBarItem(
-                    selected = true,
-                    onClick = {},
+                    selected = selectedDestination == "browser",
+                    onClick = onBrowse,
                     icon = { Icon(Icons.Filled.Folder, contentDescription = null) },
                     label = { Text(stringResource(R.string.browse)) },
                     alwaysShowLabel = false,
@@ -74,21 +76,21 @@ fun FolioNavigationDock(
                     ),
                 )
                 NavigationBarItem(
-                    selected = false,
+                    selected = selectedDestination == "transfers",
                     onClick = onTransfers,
                     icon = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) },
                     label = { Text(stringResource(R.string.transfer_queue)) },
                     alwaysShowLabel = false,
                 )
                 NavigationBarItem(
-                    selected = false,
+                    selected = selectedDestination == "network",
                     onClick = onNetwork,
                     icon = { Icon(Icons.Filled.Lan, contentDescription = null) },
                     label = { Text(stringResource(R.string.network)) },
                     alwaysShowLabel = false,
                 )
                 NavigationBarItem(
-                    selected = false,
+                    selected = selectedDestination == "collections",
                     onClick = onCollections,
                     icon = { Icon(Icons.Filled.Collections, contentDescription = null) },
                     label = { Text(stringResource(R.string.collections)) },
