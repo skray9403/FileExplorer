@@ -1,5 +1,10 @@
 package com.explorer.fileexplorer.navigation
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -103,6 +108,32 @@ fun AppNavigation(
             navController = navController,
             startDestination = Routes.BROWSER,
             modifier = Modifier.padding(contentPadding),
+            // Short, seekable transitions preserve Monomail's calm navigation rhythm
+            // and remain compatible with Android predictive-back progress.
+            enterTransition = {
+                fadeIn(tween(180)) + slideInHorizontally(
+                    animationSpec = tween(240),
+                    initialOffsetX = { width -> width / 14 },
+                )
+            },
+            exitTransition = {
+                fadeOut(tween(120)) + slideOutHorizontally(
+                    animationSpec = tween(180),
+                    targetOffsetX = { width -> -width / 24 },
+                )
+            },
+            popEnterTransition = {
+                fadeIn(tween(180)) + slideInHorizontally(
+                    animationSpec = tween(240),
+                    initialOffsetX = { width -> -width / 24 },
+                )
+            },
+            popExitTransition = {
+                fadeOut(tween(120)) + slideOutHorizontally(
+                    animationSpec = tween(180),
+                    targetOffsetX = { width -> width / 14 },
+                )
+            },
         ) {
         composable(Routes.BROWSER) {
             BrowserScreen(
