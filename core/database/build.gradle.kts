@@ -12,13 +12,7 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    sourceSets.named("androidTest") {\n        assets.srcDir("$projectDir/schemas")\n    }
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
+    sourceSets.named("androidTest") { assets.srcDir("$projectDir/schemas") }
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
