@@ -12,7 +12,7 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    sourceSets.named("androidTest") {\n        assets.srcDir("$projectDir/schemas")\n    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlin {
         compilerOptions {
