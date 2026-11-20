@@ -42,9 +42,9 @@ android {
         signingConfigs {
             create("release") {
                 storeFile = releaseStoreFile
-                storePassword = releaseStorePassword
+                storePassword = requireNotNull(releaseStorePassword)
                 keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
+                keyPassword = requireNotNull(releaseKeyPassword)
             }
         }
     }
