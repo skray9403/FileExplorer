@@ -15,9 +15,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    sourceSets.named("androidTest") {
-        assets.srcDir("$projectDir/schemas")
-    }
+    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
