@@ -15,7 +15,8 @@ val signingProps = Properties().apply {
 
 android {
     namespace = "com.explorer.fileexplorer"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
 
     defaultConfig {
         applicationId = "com.explorer.fileexplorer"
@@ -26,16 +27,21 @@ android {
         versionName = "1.6.2"
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("${rootProject.projectDir}/${signingProps.getProperty("STORE_FILE", "fileexplorer.jks")}")
-            storePassword = signingProps.getProperty("STORE_PASSWORD")
-                ?: System.getenv("FILEEXPLORER_STORE_PASSWORD")
-                ?: error("Release signing: set STORE_PASSWORD in signing.properties or FILEEXPLORER_STORE_PASSWORD env var")
-            keyAlias = signingProps.getProperty("KEY_ALIAS", "fileexplorer")
-            keyPassword = signingProps.getProperty("KEY_PASSWORD")
-                ?: System.getenv("FILEEXPLORER_KEY_PASSWORD")
-                ?: error("Release signing: set KEY_PASSWORD in signing.properties or FILEEXPLORER_KEY_PASSWORD env var")
+    val releaseStorePassword = signingProps.getProperty("STORE_PASSWORD")
+        ?: System.getenv("FILEEXPLORER_STORE_PASSWORD")
+    val releaseKeyPassword = signingProps.getProperty("KEY_PASSWORD")
+        ?: System.getenv("FILEEXPLORER_KEY_PASSWORD")
+    val releaseStoreFile = file("${rootProject.projectDir}/${signingProps.getProperty("STORE_FILE", "fileexplorer.jks")}")
+    val hasReleaseSigning = releaseStorePassword != null && releaseKeyPassword != null && releaseStoreFile.isFile
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = signingProps.getProperty("KEY_ALIAS", "fileexplorer")
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -43,7 +49,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

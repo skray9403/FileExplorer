@@ -35,7 +35,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FileExplorer"
+rootProject.name = "Folio"
 
 include(":app")
 include(":core:model")

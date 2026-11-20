@@ -16,6 +16,9 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -342,7 +345,11 @@ fun BrowserScreen(
                         onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
                     )
                     // Breadcrumb
-                    BreadcrumbBar(currentPath = state.currentPath, onNavigate = viewModel::navigateTo)
+                    BreadcrumbBar(
+                        currentPath = state.currentPath,
+                        onNavigate = viewModel::navigateTo,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                     if (state.capabilityMatrix.hasNonVerifiedFeature &&
                         state.capabilityMatrix.featureSummary().isNotBlank()) {
                         Surface(
@@ -406,8 +413,15 @@ fun BrowserScreen(
                     )
                 } else {
                     // File list
-                    PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(
+                        isRefreshing = state.isLoading,
+                        onRefresh = viewModel::refresh,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
                         if (state.files.isEmpty() && !state.isLoading) {
                             EmptyState(state.error)
                         } else {
@@ -444,6 +458,13 @@ fun BrowserScreen(
                                             onSwipeLeft = { viewModel.applySwipe(item, state.swipeLeftAction) },
                                             onSwipeRight = { viewModel.applySwipe(item, state.swipeRightAction) },
                                         )
+                                        if (item != state.files.lastOrNull()) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = 68.dp, end = 16.dp),
+                                                thickness = 0.5.dp,
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -564,31 +585,93 @@ private fun BrowserTopBar(
     rootEnabled: Boolean, isRootPath: Boolean, insideArchive: Boolean,
     dualPaneEnabled: Boolean, canExtract: Boolean, onToggleDualPane: () -> Unit, onExtractAll: () -> Unit,
 ) {
+    var moreExpanded by remember { mutableStateOf(false) }
     TopAppBar(
-        title = { Text(stringResource(DesignSystemR.string.app_name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = { IconButton(onClick = onMenuClick) { Icon(Icons.Filled.Menu, stringResource(DesignSystemR.string.menu)) } },
-        actions = {
-            if (insideArchive) {
-                IconButton(onClick = onExtractAll, enabled = canExtract) { Icon(Icons.Filled.Unarchive, stringResource(DesignSystemR.string.extract_all)) }
-            }
-            if (canPaste) { IconButton(onClick = onPaste) { Icon(Icons.Filled.ContentPaste, stringResource(DesignSystemR.string.paste)) } }
-            IconButton(onClick = onSearchClick) { Icon(Icons.Filled.Search, stringResource(DesignSystemR.string.search)) }
-            CastRouteButton()
-            IconButton(onClick = onSortClick) { Icon(Icons.AutoMirrored.Filled.Sort, stringResource(DesignSystemR.string.sort)) }
-            IconButton(onClick = onViewToggle) {
-                Icon(if (viewMode == ViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList, stringResource(DesignSystemR.string.toggle_view))
-            }
-            IconButton(onClick = onToggleDualPane) {
-                Icon(
-                    Icons.Filled.ViewColumn,
-                    stringResource(if (dualPaneEnabled) DesignSystemR.string.close_dual_pane else DesignSystemR.string.open_dual_pane),
+        title = {
+            Column(verticalArrangement = Arrangement.Center) {
+                Text(
+                    stringResource(DesignSystemR.string.app_name),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleLarge,
                 )
+                if (rootEnabled && isRootPath) {
+                    Text(
+                        stringResource(DesignSystemR.string.root_mode_active),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AccentOrange,
+                    )
+                }
             }
-            var moreExpanded by remember { mutableStateOf(false) }
-            IconButton(onClick = { moreExpanded = true }) { Icon(Icons.Filled.MoreVert, stringResource(DesignSystemR.string.more)) }
+        },
+        navigationIcon = {
+            IconButton(onClick = onMenuClick) {
+                Icon(Icons.Filled.Menu, stringResource(DesignSystemR.string.menu))
+            }
+        },
+        actions = {
+            IconButton(onClick = onSearchClick) {
+                Icon(Icons.Filled.Search, stringResource(DesignSystemR.string.search))
+            }
+            CastRouteButton()
+            IconButton(onClick = { moreExpanded = true }) {
+                Icon(Icons.Filled.MoreVert, stringResource(DesignSystemR.string.more))
+            }
             DropdownMenu(expanded = moreExpanded, onDismissRequest = { moreExpanded = false }) {
-                DropdownMenuItem(text = { Text(stringResource(if (showHidden) DesignSystemR.string.hide_hidden_files else DesignSystemR.string.show_hidden_files_menu)) },
-                    onClick = { onToggleHidden(); moreExpanded = false }, leadingIcon = { Icon(Icons.Filled.Visibility, null) })
+                if (insideArchive) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(DesignSystemR.string.extract_all)) },
+                        enabled = canExtract,
+                        onClick = { onExtractAll(); moreExpanded = false },
+                        leadingIcon = { Icon(Icons.Filled.Unarchive, null) },
+                    )
+                }
+                if (canPaste) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(DesignSystemR.string.paste)) },
+                        onClick = { onPaste(); moreExpanded = false },
+                        leadingIcon = { Icon(Icons.Filled.ContentPaste, null) },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(DesignSystemR.string.sort)) },
+                    onClick = { onSortClick(); moreExpanded = false },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, null) },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(DesignSystemR.string.toggle_view)) },
+                    onClick = { onViewToggle(); moreExpanded = false },
+                    leadingIcon = {
+                        Icon(
+                            if (viewMode == ViewMode.LIST) Icons.Filled.GridView else Icons.Filled.ViewList,
+                            null,
+                        )
+                    },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (dualPaneEnabled) DesignSystemR.string.close_dual_pane
+                                else DesignSystemR.string.open_dual_pane,
+                            ),
+                        )
+                    },
+                    onClick = { onToggleDualPane(); moreExpanded = false },
+                    leadingIcon = { Icon(Icons.Filled.ViewColumn, null) },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                if (showHidden) DesignSystemR.string.hide_hidden_files
+                                else DesignSystemR.string.show_hidden_files_menu,
+                            ),
+                        )
+                    },
+                    onClick = { onToggleHidden(); moreExpanded = false },
+                    leadingIcon = { Icon(Icons.Filled.Visibility, null) },
+                )
                 HorizontalDivider()
                 Text(
                     stringResource(DesignSystemR.string.columns),
@@ -602,22 +685,26 @@ private fun BrowserTopBar(
                         onClick = { onToggleColumn(column) },
                         leadingIcon = { Icon(Icons.Filled.ViewColumn, null) },
                         trailingIcon = {
-                            Checkbox(
-                                checked = column in visibleColumns,
-                                onCheckedChange = null,
-                            )
+                            Checkbox(checked = column in visibleColumns, onCheckedChange = null)
                         },
                     )
                 }
                 if (!insideArchive) {
-                    DropdownMenuItem(text = { Text(stringResource(DesignSystemR.string.new_folder)) }, enabled = canCreateFolder,
-                        onClick = { onNewFolder(); moreExpanded = false }, leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null) })
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(DesignSystemR.string.new_folder)) },
+                        enabled = canCreateFolder,
+                        onClick = { onNewFolder(); moreExpanded = false },
+                        leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null) },
+                    )
                 }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = if (rootEnabled && isRootPath) AccentOrange.copy(alpha = 0.05f)
-            else MaterialTheme.colorScheme.surface))
+            containerColor = if (rootEnabled && isRootPath) AccentOrange.copy(alpha = 0.06f)
+            else MaterialTheme.colorScheme.surface,
+        ),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

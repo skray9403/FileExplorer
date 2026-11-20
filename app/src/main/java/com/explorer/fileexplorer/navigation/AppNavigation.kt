@@ -1,10 +1,20 @@
 package com.explorer.fileexplorer.navigation
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.explorer.fileexplorer.feature.apps.AppsScreen
@@ -25,6 +35,7 @@ import com.explorer.fileexplorer.feature.settings.SettingsScreen
 import com.explorer.fileexplorer.feature.transfer.TransferQueueScreen
 import com.explorer.fileexplorer.feature.browser.ShizukuScreen
 import com.explorer.fileexplorer.feature.browser.RootModulesScreen
+import com.explorer.fileexplorer.core.designsystem.FolioNavigationDock
 
 object Routes {
     const val BROWSER = "browser"
@@ -61,7 +72,69 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     initialPath: String? = null,
 ) {
-    NavHost(navController = navController, startDestination = Routes.BROWSER) {
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val selectedDestination = when (currentRoute) {
+        Routes.BROWSER, Routes.BROWSER_AT_PATH -> "browser"
+        Routes.TRANSFERS -> "transfers"
+        Routes.NETWORK -> "network"
+        Routes.COLLECTIONS -> "collections"
+        else -> null
+    }
+
+    fun navigateTopLevel(route: String) {
+        navController.navigate(route) {
+            popUpTo(Routes.BROWSER) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    Scaffold(
+        bottomBar = {
+            if (selectedDestination != null) {
+                FolioNavigationDock(
+                    selectedDestination = selectedDestination,
+                    onBrowse = { navigateTopLevel(Routes.BROWSER) },
+                    onTransfers = { navigateTopLevel(Routes.TRANSFERS) },
+                    onNetwork = { navigateTopLevel(Routes.NETWORK) },
+                    onCollections = { navigateTopLevel(Routes.COLLECTIONS) },
+                    onSearch = { navController.navigate(Routes.SEARCH) },
+                )
+            }
+        },
+    ) { contentPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Routes.BROWSER,
+            modifier = Modifier.padding(contentPadding),
+            // Short, seekable transitions preserve Monomail's calm navigation rhythm
+            // and remain compatible with Android predictive-back progress.
+            enterTransition = {
+                fadeIn(tween(180)) + slideInHorizontally(
+                    animationSpec = tween(240),
+                    initialOffsetX = { width -> width / 14 },
+                )
+            },
+            exitTransition = {
+                fadeOut(tween(120)) + slideOutHorizontally(
+                    animationSpec = tween(180),
+                    targetOffsetX = { width -> -width / 24 },
+                )
+            },
+            popEnterTransition = {
+                fadeIn(tween(180)) + slideInHorizontally(
+                    animationSpec = tween(240),
+                    initialOffsetX = { width -> -width / 24 },
+                )
+            },
+            popExitTransition = {
+                fadeOut(tween(120)) + slideOutHorizontally(
+                    animationSpec = tween(180),
+                    targetOffsetX = { width -> width / 14 },
+                )
+            },
+        ) {
         composable(Routes.BROWSER) {
             BrowserScreen(
                 initialPath = initialPath,
@@ -196,6 +269,7 @@ fun AppNavigation(
             val filePath = java.net.URLDecoder.decode(
                 backStackEntry.arguments?.getString("filePath") ?: "", "UTF-8")
             DocumentPreviewScreen(filePath = filePath, onNavigateBack = { navController.popBackStack() })
+        }
         }
     }
 }

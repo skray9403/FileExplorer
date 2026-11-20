@@ -6,12 +6,11 @@ plugins {
 }
 android {
     namespace = "com.explorer.fileexplorer.core.database"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlin {
         compilerOptions {
