@@ -47,7 +47,7 @@ jobs:
 
       - name: Verify project and build debug APK
         run: >-
-          ./gradlew --no-daemon --stacktrace
+          bash ./gradlew --no-daemon --stacktrace
           verifyAccessibilityLocalization
           verifyAndroidUpgradeReadiness
           verifyDependencyProvenance
