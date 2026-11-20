@@ -26,6 +26,32 @@ import com.explorer.fileexplorer.feature.transfer.TransferQueueScreen
 import com.explorer.fileexplorer.feature.browser.ShizukuScreen
 import com.explorer.fileexplorer.feature.browser.RootModulesScreen
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideIntoContainer
+import androidx.compose.animation.slideOutOfContainer
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.currentBackStackEntryAsState
+
 object Routes {
     const val BROWSER = "browser"
     const val BROWSER_AT_PATH = "browser/{path}"
@@ -61,7 +87,98 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     initialPath: String? = null,
 ) {
-    NavHost(navController = navController, startDestination = Routes.BROWSER) {
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val selectedDockIndex = when (currentRoute) {
+        Routes.BROWSER, Routes.BROWSER_AT_PATH -> 0
+        Routes.NETWORK -> 1
+        Routes.COLLECTIONS -> 2
+        Routes.TRANSFERS -> 3
+        else -> -1
+    }
+    val showDock = selectedDockIndex >= 0
+    val dockRoutes = listOf(Routes.BROWSER, Routes.NETWORK, Routes.COLLECTIONS, Routes.TRANSFERS)
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            AnimatedVisibility(
+                visible = showDock,
+                enter = fadeIn(tween(140)) + slideInVertically(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                    initialOffsetY = { it / 2 },
+                ),
+                exit = fadeOut(tween(100)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    FolioNavigationDock(
+                        selectedIndex = selectedDockIndex,
+                        onSearch = { navController.navigate(Routes.SEARCH) },
+                        onDestinationSelected = { index ->
+                            val route = dockRoutes.getOrNull(index) ?: return@FolioNavigationDock
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                    )
+                }
+            }
+        },
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Routes.BROWSER,
+            modifier = Modifier
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding),
+            enterTransition = {
+                fadeIn(tween(120)) + slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                )
+            },
+            exitTransition = {
+                fadeOut(tween(90)) + slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    targetOffset = { it / 5 },
+                    animationSpec = tween(180),
+                )
+            },
+            popEnterTransition = {
+                fadeIn(tween(120)) + slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                )
+            },
+            popExitTransition = {
+                fadeOut(tween(90)) + slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    targetOffset = { it / 5 },
+                    animationSpec = tween(180),
+                )
+            },
+        ) {
         composable(Routes.BROWSER) {
             BrowserScreen(
                 initialPath = initialPath,
@@ -197,5 +314,5 @@ fun AppNavigation(
                 backStackEntry.arguments?.getString("filePath") ?: "", "UTF-8")
             DocumentPreviewScreen(filePath = filePath, onNavigateBack = { navController.popBackStack() })
         }
+        }
     }
-}

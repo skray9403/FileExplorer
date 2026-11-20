@@ -15,27 +15,37 @@ val signingProps = Properties().apply {
 
 android {
     namespace = "com.explorer.fileexplorer"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
 
     defaultConfig {
-        applicationId = "com.explorer.fileexplorer"
+        applicationId = "com.skray.folio"
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 22
-        versionName = "1.6.2"
+        versionCode = 1
+        versionName = "0.1.0"
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("${rootProject.projectDir}/${signingProps.getProperty("STORE_FILE", "fileexplorer.jks")}")
-            storePassword = signingProps.getProperty("STORE_PASSWORD")
-                ?: System.getenv("FILEEXPLORER_STORE_PASSWORD")
-                ?: error("Release signing: set STORE_PASSWORD in signing.properties or FILEEXPLORER_STORE_PASSWORD env var")
-            keyAlias = signingProps.getProperty("KEY_ALIAS", "fileexplorer")
-            keyPassword = signingProps.getProperty("KEY_PASSWORD")
-                ?: System.getenv("FILEEXPLORER_KEY_PASSWORD")
-                ?: error("Release signing: set KEY_PASSWORD in signing.properties or FILEEXPLORER_KEY_PASSWORD env var")
+    val releaseStorePath = signingProps.getProperty("STORE_FILE", "fileexplorer.jks")
+    val releaseStorePassword = signingProps.getProperty("STORE_PASSWORD")
+        ?: System.getenv("FILEEXPLORER_STORE_PASSWORD")
+    val releaseKeyAlias = signingProps.getProperty("KEY_ALIAS", "fileexplorer")
+    val releaseKeyPassword = signingProps.getProperty("KEY_PASSWORD")
+        ?: System.getenv("FILEEXPLORER_KEY_PASSWORD")
+    val releaseStoreFile = rootProject.file(releaseStorePath)
+    val hasReleaseSigning = releaseStoreFile.isFile &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = releaseKeyAlias
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
         }
     }
 
@@ -43,7 +53,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

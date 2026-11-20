@@ -2,12 +2,14 @@ package com.explorer.fileexplorer.core.designsystem
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -125,18 +127,35 @@ fun FileExplorerTheme(
     val supportsDynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val effectiveMode = if (themeMode == ThemeMode.DYNAMIC && !supportsDynamic) ThemeMode.SYSTEM else themeMode
 
+    val systemColorScheme = if (systemDark) DarkColorScheme else LightColorScheme
+    val dynamicColorScheme = if (supportsDynamic) {
+        if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else {
+        systemColorScheme
+    }
+
     val colorScheme = when (effectiveMode) {
         ThemeMode.LIGHT -> LightColorScheme
         ThemeMode.DARK -> DarkColorScheme
         ThemeMode.OLED -> OledColorScheme
-        ThemeMode.DYNAMIC ->
-            if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        ThemeMode.SYSTEM -> if (systemDark) DarkColorScheme else LightColorScheme
+        ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> dynamicColorScheme
     }
 
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
+        shapes = FolioShapes,
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }
+
+
+/** Shared Material 3 Expressive shape scale for Folio's surfaces and navigation. */
+private val FolioShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp),
+)

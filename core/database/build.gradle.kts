@@ -4,24 +4,44 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+androidComponents {
+    onVariants { variant ->
+        (variant as? HasAndroidTest)
+            ?.androidTest
+            ?.sources
+            ?.assets
+            ?.addStaticSourceDirectory("$projectDir/schemas")
+    }
+}
+
 android {
     namespace = "com.explorer.fileexplorer.core.database"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
+
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
 }
+
 dependencies {
     implementation(project(":core:model"))
     implementation(libs.core.ktx)

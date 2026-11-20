@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">File Explorer</string>
+    <string name="app_name">Folio</string>
     <string name="storage_access_title">Storage Access Required</string>
     <string name="storage_access_message">File Explorer needs access to all files on your device to browse, manage, and organize your storage.</string>
     <string name="grant_storage_access">Grant Storage Access</string>
