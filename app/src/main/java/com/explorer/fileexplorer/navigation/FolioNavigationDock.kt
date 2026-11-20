@@ -29,8 +29,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,6 +65,7 @@ private data class FolioDockItem(val label: String, val icon: ImageVector)
 fun FolioNavigationDock(
     selectedIndex: Int,
     onDestinationSelected: (Int) -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val items = listOf(
@@ -70,27 +74,32 @@ fun FolioNavigationDock(
         FolioDockItem(stringResource(DesignSystemR.string.collections), Icons.Filled.Bookmarks),
         FolioDockItem(stringResource(DesignSystemR.string.transfer_queue), Icons.Filled.SyncAlt),
     )
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .graphicsLayer {
-                shape = CircleShape
-                clip = false
-                shadowElevation = 6.dp.toPx()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ambientShadowColor = Color.Black.copy(alpha = 0.10f)
-                    spotShadowColor = Color.Black.copy(alpha = 0.16f)
-                }
-            },
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        tonalElevation = 1.dp,
-        shadowElevation = 0.dp,
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .height(64.dp)
+                .graphicsLayer {
+                    shape = CircleShape
+                    clip = false
+                    shadowElevation = 6.dp.toPx()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        ambientShadowColor = Color.Black.copy(alpha = 0.10f)
+                        spotShadowColor = Color.Black.copy(alpha = 0.16f)
+                    }
+                },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            tonalElevation = 1.dp,
+            shadowElevation = 0.dp,
+        ) {
+            Row(
             modifier = Modifier
                 .fillMaxHeight()
                 .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -174,6 +183,20 @@ fun FolioNavigationDock(
                     }
                 }
             }
+        }
+        FilledIconButton(
+            onClick = onSearch,
+            modifier = Modifier.size(56.dp),
+            shape = CircleShape,
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = stringResource(DesignSystemR.string.search),
+            )
         }
     }
 }
