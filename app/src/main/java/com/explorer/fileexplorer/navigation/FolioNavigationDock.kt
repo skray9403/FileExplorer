@@ -31,8 +31,8 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SyncAlt
-import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -60,6 +60,7 @@ private data class FolioDockItem(val label: String, val icon: ImageVector)
 /**
  * Persistent floating dock. The selected destination expands into a labelled pill while
  * inactive destinations remain icon-only, following Monomail's spring-driven dock motion.
+ * Search stays separate as a circular primary action.
  */
 @Composable
 fun FolioNavigationDock(
@@ -74,6 +75,7 @@ fun FolioNavigationDock(
         FolioDockItem(stringResource(DesignSystemR.string.collections), Icons.Filled.Bookmarks),
         FolioDockItem(stringResource(DesignSystemR.string.transfer_queue), Icons.Filled.SyncAlt),
     )
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -100,90 +102,92 @@ fun FolioNavigationDock(
             shadowElevation = 0.dp,
         ) {
             Row(
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            items.forEachIndexed { index, item ->
-                val isSelected = selectedIndex == index
-                val containerColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
-                    label = "folioDockContainer$index",
-                )
-                val contentColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
-                    label = "folioDockContent$index",
-                )
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items.forEachIndexed { index, item ->
+                    val isSelected = selectedIndex == index
+                    val containerColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                        label = "folioDockContainer$index",
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                        label = "folioDockContent$index",
+                    )
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(CircleShape)
-                        .background(containerColor)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = ripple(bounded = true),
-                            role = Role.Tab,
-                            onClick = { onDestinationSelected(index) },
-                        )
-                        .semantics { selected = isSelected }
-                        .padding(horizontal = 5.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(containerColor)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = ripple(bounded = true),
+                                role = Role.Tab,
+                                onClick = { onDestinationSelected(index) },
+                            )
+                            .semantics { selected = isSelected }
+                            .padding(horizontal = 5.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = item.icon,
-                            contentDescription = item.label,
-                            tint = contentColor,
-                            modifier = Modifier.size(21.dp),
-                        )
-                        AnimatedVisibility(
-                            visible = isSelected,
-                            enter = fadeIn(tween(140, delayMillis = 80)) + expandHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMedium,
-                                ),
-                            ),
-                            exit = fadeOut(tween(80)) + shrinkHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMedium,
-                                ),
-                            ),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(Modifier.width(7.dp))
-                                Text(
-                                    text = item.label,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                                tint = contentColor,
+                                modifier = Modifier.size(21.dp),
+                            )
+                            AnimatedVisibility(
+                                visible = isSelected,
+                                enter = fadeIn(tween(140, delayMillis = 80)) + expandHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium,
                                     ),
-                                    color = contentColor,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
+                                ),
+                                exit = fadeOut(tween(80)) + shrinkHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium,
+                                    ),
+                                ),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(Modifier.width(7.dp))
+                                    Text(
+                                        text = item.label,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                        ),
+                                        color = contentColor,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
         FilledIconButton(
             onClick = onSearch,
             modifier = Modifier.size(56.dp),
