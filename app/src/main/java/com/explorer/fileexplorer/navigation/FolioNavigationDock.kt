@@ -70,11 +70,6 @@ fun FolioNavigationDock(
         FolioDockItem(stringResource(DesignSystemR.string.collections), Icons.Filled.Bookmarks),
         FolioDockItem(stringResource(DesignSystemR.string.transfer_queue), Icons.Filled.SyncAlt),
     )
-    val dockSpring = spring<Float>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMedium,
-    )
-
     Surface(
         modifier = modifier
             .fillMaxWidth()
