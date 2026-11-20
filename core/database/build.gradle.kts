@@ -5,6 +5,16 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+androidComponents {
+    onVariants { variant ->
+        (variant as? HasAndroidTest)
+            ?.androidTest
+            ?.sources
+            ?.assets
+            ?.addStaticSourceDirectory("$projectDir/schemas")
+    }
+}
+
 android {
     namespace = "com.explorer.fileexplorer.core.database"
     compileSdk = 37
@@ -15,7 +25,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
