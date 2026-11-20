@@ -16,6 +16,9 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -410,8 +413,15 @@ fun BrowserScreen(
                     )
                 } else {
                     // File list
-                    PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(
+                        isRefreshing = state.isLoading,
+                        onRefresh = viewModel::refresh,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
                         if (state.files.isEmpty() && !state.isLoading) {
                             EmptyState(state.error)
                         } else {
