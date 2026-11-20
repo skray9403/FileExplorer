@@ -46,6 +46,7 @@ import com.explorer.fileexplorer.core.database.TagEntity
 import com.explorer.fileexplorer.core.database.RecentLocationEntity
 import com.explorer.fileexplorer.core.database.SavedSearchEntity
 import com.explorer.fileexplorer.core.designsystem.AccentOrange
+import com.explorer.fileexplorer.core.designsystem.FolioNavigationDock
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.model.*
 import com.explorer.fileexplorer.core.storage.RootState
@@ -267,6 +268,16 @@ fun BrowserScreen(
                         dualPaneEnabled = state.dualPaneEnabled,
                         onToggleDualPane = viewModel::toggleDualPane,
                         onExtractAll = { viewModel.extractArchive() })
+                }
+            },
+            bottomBar = {
+                if (!state.selectionMode) {
+                    FolioNavigationDock(
+                        onTransfers = onOpenTransfers,
+                        onNetwork = onOpenNetwork,
+                        onCollections = onOpenCollections,
+                        onSearch = onOpenSearch,
+                    )
                 }
             },
             floatingActionButton = {
