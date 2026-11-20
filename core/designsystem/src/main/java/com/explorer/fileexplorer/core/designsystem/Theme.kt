@@ -8,7 +8,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 /**
  * Theme selector — persisted in DataStore by `feature:settings`.
@@ -101,6 +103,14 @@ private val LightColorScheme = lightColorScheme(
     surfaceContainerHighest = LightSurfaceElevated,
 )
 
+private val FolioShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp),
+)
+
 val AppTypography = Typography(
     displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 28.sp),
     headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
@@ -137,6 +147,8 @@ fun FileExplorerTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
+        shapes = FolioShapes,
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }
