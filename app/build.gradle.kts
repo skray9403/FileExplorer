@@ -15,7 +15,7 @@ val signingProps = Properties().apply {
 
 android {
     namespace = "com.explorer.fileexplorer"
-    compileSdk = 37
+    compileSdk = 37.1
 
     defaultConfig {
         applicationId = "com.explorer.fileexplorer"
