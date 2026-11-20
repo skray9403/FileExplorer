@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
 concurrency:
   group: folio-android-${{ github.ref }}
   cancel-in-progress: true
@@ -30,9 +34,12 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Install Android 37.1 SDK
+        shell: bash
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-37.1" "platform-tools"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platforms;android-37.1" "platform-tools"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Run verification and build debug APK
