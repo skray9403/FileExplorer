@@ -6,7 +6,8 @@ plugins {
 }
 android {
     namespace = "com.explorer.fileexplorer.core.database"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

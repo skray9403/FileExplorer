@@ -15,7 +15,8 @@ val signingProps = Properties().apply {
 
 android {
     namespace = "com.explorer.fileexplorer"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
 
     defaultConfig {
         applicationId = "com.skray.folio"
