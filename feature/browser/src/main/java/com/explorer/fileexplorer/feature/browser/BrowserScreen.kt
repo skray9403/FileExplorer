@@ -342,7 +342,11 @@ fun BrowserScreen(
                         onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
                     )
                     // Breadcrumb
-                    BreadcrumbBar(currentPath = state.currentPath, onNavigate = viewModel::navigateTo)
+                    BreadcrumbBar(
+                        currentPath = state.currentPath,
+                        onNavigate = viewModel::navigateTo,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                     if (state.capabilityMatrix.hasNonVerifiedFeature &&
                         state.capabilityMatrix.featureSummary().isNotBlank()) {
                         Surface(
@@ -592,6 +596,7 @@ private fun BrowserTopBar(
             IconButton(onClick = onSearchClick) {
                 Icon(Icons.Filled.Search, stringResource(DesignSystemR.string.search))
             }
+            CastRouteButton()
             IconButton(onClick = { moreExpanded = true }) {
                 Icon(Icons.Filled.MoreVert, stringResource(DesignSystemR.string.more))
             }
