@@ -272,15 +272,6 @@ fun BrowserScreen(
                         onExtractAll = { viewModel.extractArchive() })
                 }
             },
-            floatingActionButton = {
-                if (!state.selectionMode && !state.insideArchive &&
-                    state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY)) {
-                    FloatingActionButton(onClick = viewModel::showNewFolderDialog,
-                        containerColor = MaterialTheme.colorScheme.primary) {
-                        Icon(Icons.Filled.CreateNewFolder, stringResource(DesignSystemR.string.new_folder))
-                    }
-                }
-            },
         ) { padding ->
             BoxWithConstraints(modifier = Modifier.padding(padding).fillMaxSize()) {
                 if (!state.dualPaneEnabled && LargeScreenLayoutPolicy.useThreePane(maxWidth.value.toInt())) {
@@ -336,36 +327,22 @@ fun BrowserScreen(
                 }
 
                 if (!state.dualPaneEnabled) {
-                    BrowserTabsBar(
-                        tabs = state.tabs,
-                        selectedIndex = state.selectedTabIndex,
-                        onSelect = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
-                        onClose = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
-                        onAdd = { viewModel.openTab(BrowserPane.PRIMARY) },
-                        onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
-                    )
+                    if (state.tabs.size > 1) {
+                        BrowserTabsBar(
+                            tabs = state.tabs,
+                            selectedIndex = state.selectedTabIndex,
+                            onSelect = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
+                            onClose = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
+                            onAdd = { viewModel.openTab(BrowserPane.PRIMARY) },
+                            onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
+                        )
+                    }
                     // Breadcrumb
                     BreadcrumbBar(
                         currentPath = state.currentPath,
                         onNavigate = viewModel::navigateTo,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
-                    if (state.capabilityMatrix.hasNonVerifiedFeature &&
-                        state.capabilityMatrix.featureSummary().isNotBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = state.capabilityMatrix.featureSummary(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            )
-                        }
-                    }
                 }
 
                 // Sort menu

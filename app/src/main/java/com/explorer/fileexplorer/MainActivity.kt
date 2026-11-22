@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
                 settingsRepository.settings.map { it.themeMode }
             }
             val themeMode by themeModeFlow
-                .collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+                .collectAsStateWithLifecycle(initialValue = ThemeMode.OLED)
 
             FileExplorerTheme(themeMode = themeMode) {
                 Surface(

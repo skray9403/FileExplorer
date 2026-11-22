@@ -151,7 +151,7 @@ fun FileExplorerTheme(
             } else {
                 if (systemDark) DarkColorScheme else LightColorScheme
             }
-        ThemeMode.SYSTEM -> if (systemDark) DarkColorScheme else LightColorScheme
+        ThemeMode.SYSTEM -> if (systemDark) OledColorScheme else LightColorScheme
     }
 
     val extendedColors = if (isDark) DarkExtendedColors else LightExtendedColors
