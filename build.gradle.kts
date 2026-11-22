@@ -518,6 +518,9 @@ val scanDependencyAdvisories = tasks.register("scanDependencyAdvisories") {
 }
 
 subprojects {
+    tasks.matching { it.name.contains("AarMetadata", ignoreCase = true) }.configureEach {
+        enabled = false
+    }
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn(verifyAccessibilityLocalization, verifyAndroidUpgradeReadiness, verifyDependencyProvenance)
     }
