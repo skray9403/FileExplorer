@@ -110,7 +110,7 @@ private fun CollectionSummaryList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 136.dp),
     ) {
         items(summaries, key = { it.category.name }) { summary ->
             Card(
@@ -145,7 +145,10 @@ private fun CollectionFiles(
             modifier = Modifier.padding(24.dp),
         )
     } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 136.dp),
+        ) {
             items(files, key = { it.path }) { item ->
                 FileListItem(
                     item = item,

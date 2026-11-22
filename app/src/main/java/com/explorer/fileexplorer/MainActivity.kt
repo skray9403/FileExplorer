@@ -4,11 +4,26 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -30,9 +45,6 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var permissionHelper: PermissionHelper
     @Inject lateinit var settingsRepository: SettingsRepository
 
-    // Tracked at the activity level so onResume can refresh it after the user
-    // returns from the system settings page — Compose will recompose any
-    // collector when this MutableState changes.
     private val hasPermissionState = mutableStateOf(false)
     private val limitedStorageState = mutableStateOf(false)
 
@@ -46,7 +58,7 @@ class MainActivity : ComponentActivity() {
                 settingsRepository.settings.map { it.themeMode }
             }
             val themeMode by themeModeFlow
-                .collectAsStateWithLifecycle(initialValue = ThemeMode.OLED)
+                .collectAsStateWithLifecycle(initialValue = ThemeMode.DYNAMIC)
 
             FileExplorerTheme(themeMode = themeMode) {
                 Surface(
@@ -93,9 +105,9 @@ private fun PermissionScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(
-            imageVector = Icons.Filled.Storage,
+            imageVector = Icons.Rounded.Storage,
             contentDescription = null,
-            modifier = Modifier.size(80.dp),
+            modifier = Modifier.size(72.dp),
             tint = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.height(24.dp))

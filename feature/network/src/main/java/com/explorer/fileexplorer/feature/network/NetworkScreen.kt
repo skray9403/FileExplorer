@@ -315,7 +315,10 @@ fun NetworkScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.padding(padding).fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 136.dp),
+            ) {
                 items(state.connections, key = { it.id }) { conn ->
                     ConnectionListItem(
                         connection = conn,
@@ -467,7 +470,10 @@ private fun RemoteBrowserScreen(
                 Text(stringResource(DesignSystemR.string.empty_directory), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.padding(padding).fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 136.dp),
+            ) {
                 items(files, key = { it.path }) { item ->
                     FileListItem(item = item, onClick = { onItemClick(item) }, onLongClick = {})
                 }

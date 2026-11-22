@@ -9,6 +9,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
@@ -20,9 +21,13 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,18 +44,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ContentCut
-import androidx.compose.material.icons.filled.CreateNewFolder
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lan
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ContentCut
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Unarchive
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -61,8 +68,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -75,24 +84,36 @@ import androidx.compose.ui.unit.dp
 
 private val PillHeight = 56.dp
 private val CollapsedPillWidth = 56.dp
-private val InterPillGap = 10.dp
+private val InterPillGap = 8.dp
 
 enum class FolioBottomBarMode {
-    /** Resting Dock: [Browse | Transfers | Network | Collections] [+] */
+    /** Resting Dock: [Browse | Collections | Network | Tools] [+ or Paste] */
     DOCK_TABS,
 
     /** Fast Scroll Down: [🔍] [+ New folder] */
     SCROLL_ACTION,
 
-    /** Fast Scroll Up: [🔍 Search files...] [➕] */
+    /** Fast Scroll Up: [🔍 Search] [+] */
     SCROLL_SEARCH,
 
-    /** Selection Mode: [Cut | Copy] [Delete | More] */
+    /** File Selection Mode: [Cut | Copy] [Delete | More] (or Archive Extract) */
     SELECTION_ACTIONS,
 }
 
-private enum class LeftSlotKind { DOCK_TABS, SCROLL_SEARCH_COLLAPSED, SCROLL_SEARCH_EXPANDED, SELECTION_EDIT }
-private enum class RightSlotKind { ACTION_FAB, ACTION_EXPANDED, SELECTION_MANAGE }
+private enum class LeftSlotKind {
+    DOCK_TABS,
+    SCROLL_SEARCH_COLLAPSED,
+    SCROLL_SEARCH_EXPANDED,
+    SELECTION_EDIT,
+    SELECTION_ARCHIVE,
+}
+
+private enum class RightSlotKind {
+    ACTION_FAB,
+    PASTE_FAB,
+    ACTION_EXPANDED,
+    SELECTION_MANAGE,
+}
 
 data class FolioNavDestination(
     val id: String,
@@ -101,31 +122,27 @@ data class FolioNavDestination(
 )
 
 /**
- * Signature 2-slot floating bottom bar with continuous M3 Expressive morphing.
+ * Persistent hoisted 2-slot M3 Expressive floating bottom bar for Folio.
  *
- * - The two outer [Surface] containers NEVER unmount; widths animate via [animateDpAsState]
- *   and colors via critically-damped [animateColorAsState].
- * - Intra-screen scroll morph uses M3 Standard easing (200ms).
- * - Cross-mode morph uses M3 Expressive spatial spring (dampingRatio = 0.85f, stiffness = 500f).
- * - Through-zero inner content swap eliminates overlapping ghost frames.
- * - The scroll-to-top button floats independently in a slot 12dp above the pills (Δy = 0 on dock).
+ * - Both outer [Surface] containers stay mounted permanently; widths interpolate via
+ *   [animateDpAsState] (`200ms` M3 Standard for scroll morph, `spring(0.85f, 500f)` for
+ *   selection & mode transforms) and colors via critically-damped `stiffness = 1400f`.
+ * - Through-zero inner content swap (`80ms` out, `90ms` delay + `170ms` in) prevents ghosting.
+ * - Independent offset-gated `↑` scroll-to-top slot floats `12.dp` above the bar (`Δy = 0`).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolioMorphingBottomBar(
     selectedDestination: String,
     onDestinationSelected: (String) -> Unit,
-    mode: FolioBottomBarMode = FolioBottomBarMode.DOCK_TABS,
-    showScrollToTop: Boolean = false,
-    onScrollToTop: () -> Unit = {},
-    onSearchClick: () -> Unit = {},
-    onActionClick: () -> Unit = {},
-    onCutClick: () -> Unit = {},
-    onCopyClick: () -> Unit = {},
-    onDeleteClick: () -> Unit = {},
-    onMoreClick: () -> Unit = {},
+    controller: FolioDockController,
+    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val mode = controller.resolvedMode
+    val selection = controller.selectionActions
     val isScrollPair = mode == FolioBottomBarMode.SCROLL_ACTION || mode == FolioBottomBarMode.SCROLL_SEARCH
+    val showPasteFab = controller.canPaste && mode != FolioBottomBarMode.SELECTION_ACTIONS
 
     val spatialSpec = if (isScrollPair) {
         tween<Dp>(durationMillis = 200, easing = M3StandardEasing)
@@ -141,44 +158,47 @@ fun FolioMorphingBottomBar(
     val colorScheme = MaterialTheme.colorScheme
 
     val leftContainerTarget = when (mode) {
-        FolioBottomBarMode.DOCK_TABS -> colorScheme.surfaceContainer
+        FolioBottomBarMode.DOCK_TABS -> colorScheme.surfaceContainerHigh
         FolioBottomBarMode.SCROLL_ACTION, FolioBottomBarMode.SCROLL_SEARCH -> colorScheme.surfaceContainerHigh
         FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.surfaceContainerHigh
     }
     val leftContentTarget = colorScheme.onSurface
 
-    val rightContainerTarget = when (mode) {
-        FolioBottomBarMode.DOCK_TABS, FolioBottomBarMode.SCROLL_ACTION -> colorScheme.primary
-        FolioBottomBarMode.SCROLL_SEARCH -> colorScheme.surfaceContainer
-        FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.surfaceContainerHigh
+    val rightContainerTarget = when {
+        mode == FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.surfaceContainerHigh
+        showPasteFab -> colorScheme.primary
+        mode == FolioBottomBarMode.DOCK_TABS || mode == FolioBottomBarMode.SCROLL_ACTION -> colorScheme.primaryContainer
+        else -> colorScheme.secondaryContainer
     }
-    val rightContentTarget = when (mode) {
-        FolioBottomBarMode.DOCK_TABS, FolioBottomBarMode.SCROLL_ACTION -> colorScheme.onPrimary
-        else -> colorScheme.onSurface
+    val rightContentTarget = when {
+        mode == FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.onSurface
+        showPasteFab -> colorScheme.onPrimary
+        mode == FolioBottomBarMode.DOCK_TABS || mode == FolioBottomBarMode.SCROLL_ACTION -> colorScheme.onPrimaryContainer
+        else -> colorScheme.onSecondaryContainer
     }
 
-    val leftContainerColor by animateColorAsState(leftContainerTarget, effectsColorSpec, label = "leftBg")
-    val leftContentColor by animateColorAsState(leftContentTarget, effectsColorSpec, label = "leftFg")
-    val rightContainerColor by animateColorAsState(rightContainerTarget, effectsColorSpec, label = "rightBg")
-    val rightContentColor by animateColorAsState(rightContentTarget, effectsColorSpec, label = "rightFg")
+    val leftContainerColor by animateColorAsState(leftContainerTarget, effectsColorSpec, label = "folioLeftBg")
+    val leftContentColor by animateColorAsState(leftContentTarget, effectsColorSpec, label = "folioLeftFg")
+    val rightContainerColor by animateColorAsState(rightContainerTarget, effectsColorSpec, label = "folioRightBg")
+    val rightContentColor by animateColorAsState(rightContentTarget, effectsColorSpec, label = "folioRightFg")
 
     val destinations = listOf(
-        FolioNavDestination("browser", stringResource(R.string.browse), Icons.Filled.Folder),
-        FolioNavDestination("transfers", stringResource(R.string.transfer_queue), Icons.Filled.SwapHoriz),
-        FolioNavDestination("network", stringResource(R.string.network), Icons.Filled.Lan),
-        FolioNavDestination("collections", stringResource(R.string.collections), Icons.Filled.Collections),
+        FolioNavDestination("browser", stringResource(R.string.browse), Icons.Rounded.Folder),
+        FolioNavDestination("collections", stringResource(R.string.collections), Icons.Rounded.GridView),
+        FolioNavDestination("network", stringResource(R.string.network), Icons.Rounded.Lan),
+        FolioNavDestination("tools", stringResource(R.string.tools), Icons.Rounded.Widgets),
     )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Independent scroll-to-top slot (Δy = 0 on dock pills)
+        // Independent scroll-to-top button (offset-gated > 160dp, Δy = 0 on bottom pills)
         AnimatedVisibility(
-            visible = showScrollToTop && mode != FolioBottomBarMode.SELECTION_ACTIONS,
+            visible = controller.showScrollToTop && mode != FolioBottomBarMode.SELECTION_ACTIONS,
             enter = fadeIn(tween(120)) +
                 scaleIn(tween(120), initialScale = 0.75f) +
                 slideInVertically(tween(120)) { it / 3 },
@@ -188,17 +208,20 @@ fun FolioMorphingBottomBar(
         ) {
             Box(modifier = Modifier.padding(bottom = 12.dp)) {
                 Surface(
-                    onClick = onScrollToTop,
+                    onClick = {
+                        controller.onScrollToTop()
+                        controller.resetScrollMorph()
+                    },
                     shape = CircleShape,
                     color = colorScheme.surfaceContainerHigh,
                     contentColor = colorScheme.onSurface,
-                    shadowElevation = 6.dp,
+                    shadowElevation = 4.dp,
                     modifier = Modifier.size(40.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Filled.ArrowUpward,
-                            contentDescription = stringResource(R.string.quick_access),
+                            imageVector = Icons.Rounded.ArrowUpward,
+                            contentDescription = "Scroll to top",
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -206,7 +229,7 @@ fun FolioMorphingBottomBar(
             }
         }
 
-        // Persistent 2-slot pill cluster
+        // Persistent 2-slot morphing container cluster
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
@@ -214,33 +237,39 @@ fun FolioMorphingBottomBar(
             val usableWidth = (maxWidth - InterPillGap).coerceAtLeast(180.dp)
 
             val leftTargetWidth = when (mode) {
-                FolioBottomBarMode.DOCK_TABS -> (usableWidth - CollapsedPillWidth).coerceAtLeast(200.dp)
+                FolioBottomBarMode.DOCK_TABS -> {
+                    val rightW = if (showPasteFab) 104.dp else CollapsedPillWidth
+                    (usableWidth - rightW).coerceAtLeast(196.dp)
+                }
                 FolioBottomBarMode.SCROLL_ACTION -> CollapsedPillWidth
-                FolioBottomBarMode.SCROLL_SEARCH -> (usableWidth - CollapsedPillWidth).coerceAtLeast(180.dp)
+                FolioBottomBarMode.SCROLL_SEARCH -> 146.dp.coerceAtMost(usableWidth - CollapsedPillWidth)
                 FolioBottomBarMode.SELECTION_ACTIONS -> usableWidth / 2f
             }
 
             val rightTargetWidth = when (mode) {
-                FolioBottomBarMode.DOCK_TABS -> CollapsedPillWidth
-                FolioBottomBarMode.SCROLL_ACTION -> (usableWidth - CollapsedPillWidth).coerceAtLeast(140.dp)
+                FolioBottomBarMode.DOCK_TABS -> if (showPasteFab) 104.dp else CollapsedPillWidth
+                FolioBottomBarMode.SCROLL_ACTION -> 152.dp.coerceAtMost(usableWidth - CollapsedPillWidth)
                 FolioBottomBarMode.SCROLL_SEARCH -> CollapsedPillWidth
                 FolioBottomBarMode.SELECTION_ACTIONS -> usableWidth / 2f
             }
 
-            val leftWidth by animateDpAsState(leftTargetWidth, spatialSpec, label = "leftWidth")
-            val rightWidth by animateDpAsState(rightTargetWidth, spatialSpec, label = "rightWidth")
+            val leftWidth by animateDpAsState(leftTargetWidth, spatialSpec, label = "folioLeftWidth")
+            val rightWidth by animateDpAsState(rightTargetWidth, spatialSpec, label = "folioRightWidth")
 
             val leftSlotKind = when (mode) {
                 FolioBottomBarMode.DOCK_TABS -> LeftSlotKind.DOCK_TABS
                 FolioBottomBarMode.SCROLL_ACTION -> LeftSlotKind.SCROLL_SEARCH_COLLAPSED
                 FolioBottomBarMode.SCROLL_SEARCH -> LeftSlotKind.SCROLL_SEARCH_EXPANDED
-                FolioBottomBarMode.SELECTION_ACTIONS -> LeftSlotKind.SELECTION_EDIT
+                FolioBottomBarMode.SELECTION_ACTIONS -> {
+                    if (selection.insideArchive) LeftSlotKind.SELECTION_ARCHIVE else LeftSlotKind.SELECTION_EDIT
+                }
             }
 
-            val rightSlotKind = when (mode) {
-                FolioBottomBarMode.DOCK_TABS, FolioBottomBarMode.SCROLL_SEARCH -> RightSlotKind.ACTION_FAB
-                FolioBottomBarMode.SCROLL_ACTION -> RightSlotKind.ACTION_EXPANDED
-                FolioBottomBarMode.SELECTION_ACTIONS -> RightSlotKind.SELECTION_MANAGE
+            val rightSlotKind = when {
+                mode == FolioBottomBarMode.SELECTION_ACTIONS -> RightSlotKind.SELECTION_MANAGE
+                showPasteFab -> RightSlotKind.PASTE_FAB
+                mode == FolioBottomBarMode.SCROLL_ACTION -> RightSlotKind.ACTION_EXPANDED
+                else -> RightSlotKind.ACTION_FAB
             }
 
             Row(
@@ -253,6 +282,7 @@ fun FolioMorphingBottomBar(
                     color = leftContainerColor,
                     contentColor = leftContentColor,
                     shadowElevation = 6.dp,
+                    border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.4f)),
                     modifier = Modifier
                         .width(leftWidth)
                         .height(PillHeight)
@@ -260,8 +290,8 @@ fun FolioMorphingBottomBar(
                 ) {
                     AnimatedContent(
                         targetState = leftSlotKind,
-                        transitionSpec = { throughZeroContentTransform() },
-                        label = "leftSlotContent",
+                        transitionSpec = { folioThroughZeroTransform() },
+                        label = "folioLeftSlotContent",
                         modifier = Modifier.fillMaxSize(),
                     ) { kind ->
                         when (kind) {
@@ -274,69 +304,12 @@ fun FolioMorphingBottomBar(
                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                 ) {
                                     destinations.forEach { dest ->
-                                        val isSelected = dest.id == selectedDestination
-                                        val chipBg by animateColorAsState(
-                                            targetValue = if (isSelected) colorScheme.surfaceContainerHighest else Color.Transparent,
-                                            animationSpec = effectsColorSpec,
-                                            label = "destBg_${dest.id}",
+                                        FolioDockChip(
+                                            destination = dest,
+                                            isSelected = dest.id == selectedDestination,
+                                            onClick = { onDestinationSelected(dest.id) },
+                                            modifier = Modifier.weight(1f),
                                         )
-                                        val contentColor by animateColorAsState(
-                                            targetValue = if (isSelected) colorScheme.primary else colorScheme.onSurfaceVariant,
-                                            animationSpec = effectsColorSpec,
-                                            label = "destFg_${dest.id}",
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxHeight()
-                                                .clip(CircleShape)
-                                                .background(chipBg)
-                                                .clickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = ripple(bounded = true),
-                                                    role = Role.Tab,
-                                                    onClick = { onDestinationSelected(dest.id) },
-                                                )
-                                                .semantics {
-                                                    selected = isSelected
-                                                },
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(horizontal = 6.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = dest.icon,
-                                                    contentDescription = dest.label,
-                                                    tint = contentColor,
-                                                    modifier = Modifier.size(20.dp),
-                                                )
-                                                AnimatedVisibility(
-                                                    visible = isSelected,
-                                                    enter = expandHorizontally(
-                                                        animationSpec = tween(180, easing = M3StandardEasing),
-                                                    ) + fadeIn(tween(140)),
-                                                    exit = shrinkHorizontally(
-                                                        animationSpec = tween(140, easing = M3StandardEasing),
-                                                    ) + fadeOut(tween(100)),
-                                                ) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Spacer(Modifier.width(6.dp))
-                                                        Text(
-                                                            text = dest.label,
-                                                            maxLines = 1,
-                                                            softWrap = false,
-                                                            overflow = TextOverflow.Clip,
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            color = contentColor,
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }
@@ -353,9 +326,9 @@ fun FolioMorphingBottomBar(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Search,
+                                        imageVector = Icons.Rounded.Search,
                                         contentDescription = stringResource(R.string.search),
-                                        modifier = Modifier.size(24.dp),
+                                        modifier = Modifier.size(22.dp),
                                     )
                                 }
                             }
@@ -371,21 +344,21 @@ fun FolioMorphingBottomBar(
                                         )
                                         .padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Start,
+                                    horizontalArrangement = Arrangement.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Search,
+                                        imageVector = Icons.Rounded.Search,
                                         contentDescription = stringResource(R.string.search),
-                                        modifier = Modifier.size(22.dp),
+                                        modifier = Modifier.size(20.dp),
                                     )
-                                    Spacer(Modifier.width(10.dp))
+                                    Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = stringResource(R.string.search),
                                         maxLines = 1,
                                         softWrap = false,
                                         overflow = TextOverflow.Clip,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
                                     )
                                 }
                             }
@@ -394,38 +367,75 @@ fun FolioMorphingBottomBar(
                                 Row(
                                     modifier = Modifier.fillMaxSize(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
-                                            .clickable(onClick = onCutClick),
+                                            .alpha(if (selection.canMove) 1f else 0.38f)
+                                            .clickable(enabled = selection.canMove, onClick = selection.onCut),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center,
                                     ) {
-                                        Icon(Icons.Filled.ContentCut, null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Rounded.ContentCut, null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.cut), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = stringResource(R.string.cut),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Clip,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                     Box(
                                         modifier = Modifier
                                             .width(1.dp)
                                             .height(20.dp)
-                                            .background(colorScheme.outlineVariant),
+                                            .background(colorScheme.outlineVariant.copy(alpha = 0.6f)),
                                     )
                                     Row(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
-                                            .clickable(onClick = onCopyClick),
+                                            .alpha(if (selection.canCopy) 1f else 0.38f)
+                                            .clickable(enabled = selection.canCopy, onClick = selection.onCopy),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center,
                                     ) {
-                                        Icon(Icons.Filled.ContentCopy, null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.copy), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = stringResource(R.string.copy),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Clip,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
+                                }
+                            }
+
+                            LeftSlotKind.SELECTION_ARCHIVE -> {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .alpha(if (selection.canExtract) 1f else 0.38f)
+                                        .clickable(enabled = selection.canExtract, onClick = selection.onExtract),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Rounded.Unarchive, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.extract_all),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Clip,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
                                 }
                             }
                         }
@@ -438,6 +448,11 @@ fun FolioMorphingBottomBar(
                     color = rightContainerColor,
                     contentColor = rightContentColor,
                     shadowElevation = 6.dp,
+                    border = if (mode == FolioBottomBarMode.SELECTION_ACTIONS) {
+                        BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    } else {
+                        null
+                    },
                     modifier = Modifier
                         .width(rightWidth)
                         .height(PillHeight)
@@ -445,26 +460,55 @@ fun FolioMorphingBottomBar(
                 ) {
                     AnimatedContent(
                         targetState = rightSlotKind,
-                        transitionSpec = { throughZeroContentTransform() },
-                        label = "rightSlotContent",
+                        transitionSpec = { folioThroughZeroTransform() },
+                        label = "folioRightSlotContent",
                         modifier = Modifier.fillMaxSize(),
                     ) { kind ->
                         when (kind) {
                             RightSlotKind.ACTION_FAB -> {
+                                val actionEnabled = controller.canCreatePrimaryAction
                                 Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .alpha(if (actionEnabled) 1f else 0.5f)
+                                        .clickable(
+                                            enabled = actionEnabled,
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = ripple(bounded = true),
+                                            onClick = controller.onPrimaryAction,
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = if (selectedDestination == "browser") Icons.Rounded.Add else Icons.Rounded.Search,
+                                        contentDescription = stringResource(R.string.new_folder),
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+
+                            RightSlotKind.PASTE_FAB -> {
+                                Row(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = ripple(bounded = true),
-                                            onClick = onActionClick,
-                                        ),
-                                    contentAlignment = Alignment.Center,
+                                            onClick = controller.onPaste,
+                                        )
+                                        .padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = stringResource(R.string.new_folder),
-                                        modifier = Modifier.size(26.dp),
+                                    Icon(Icons.Rounded.ContentPaste, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.paste),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Clip,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
                                     )
                                 }
                             }
@@ -474,16 +518,17 @@ fun FolioMorphingBottomBar(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clickable(
+                                            enabled = controller.canCreatePrimaryAction,
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = ripple(bounded = true),
-                                            onClick = onActionClick,
+                                            onClick = controller.onPrimaryAction,
                                         )
                                         .padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.CreateNewFolder,
+                                        imageVector = Icons.Rounded.CreateNewFolder,
                                         contentDescription = stringResource(R.string.new_folder),
                                         modifier = Modifier.size(20.dp),
                                     )
@@ -503,37 +548,64 @@ fun FolioMorphingBottomBar(
                                 Row(
                                     modifier = Modifier.fillMaxSize(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clickable(onClick = onDeleteClick),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                    if (!selection.insideArchive) {
+                                        val deleteEnabled = selection.canTrash || selection.canDelete
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight()
+                                                .alpha(if (deleteEnabled) 1f else 0.38f)
+                                                .combinedClickable(
+                                                    enabled = deleteEnabled,
+                                                    onClick = { if (selection.canTrash) selection.onDelete() else selection.onPermanentDelete() },
+                                                    onLongClick = selection.onPermanentDelete,
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.DeleteOutline,
+                                                contentDescription = stringResource(R.string.delete),
+                                                tint = colorScheme.error,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                text = stringResource(R.string.delete),
+                                                color = colorScheme.error,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Clip,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .height(20.dp)
+                                                .background(colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                        )
                                     }
-                                    Box(
-                                        modifier = Modifier
-                                            .width(1.dp)
-                                            .height(20.dp)
-                                            .background(colorScheme.outlineVariant),
-                                    )
                                     Row(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
-                                            .clickable(onClick = onMoreClick),
+                                            .clickable(onClick = selection.onMore),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center,
                                     ) {
-                                        Icon(Icons.Filled.MoreHoriz, null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.more), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                        Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = stringResource(R.string.more),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Clip,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                 }
                             }
@@ -545,7 +617,92 @@ fun FolioMorphingBottomBar(
     }
 }
 
-private fun <S> AnimatedContentTransitionScope<S>.throughZeroContentTransform() =
+@Composable
+private fun FolioDockChip(
+    destination: FolioNavDestination,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val effectsSpec = MonoSpring.noBounceColor<Color>()
+
+    val chipBg by animateColorAsState(
+        targetValue = if (isSelected) colorScheme.secondaryContainer else Color.Transparent,
+        animationSpec = effectsSpec,
+        label = "folioChipBg_${destination.id}",
+    )
+    val chipFg by animateColorAsState(
+        targetValue = if (isSelected) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
+        animationSpec = effectsSpec,
+        label = "folioChipFg_${destination.id}",
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = MonoSpring.bouncy(),
+        label = "folioChipPress_${destination.id}",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
+            .clip(CircleShape)
+            .background(chipBg)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .semantics { selected = isSelected },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = destination.label,
+                tint = chipFg,
+                modifier = Modifier.size(20.dp),
+            )
+            AnimatedVisibility(
+                visible = isSelected,
+                enter = expandHorizontally(
+                    animationSpec = tween(200, easing = M3StandardEasing),
+                    expandFrom = Alignment.Start,
+                    clip = true,
+                ) + fadeIn(tween(110, delayMillis = 40, easing = LinearEasing)),
+                exit = shrinkHorizontally(
+                    animationSpec = tween(200, easing = M3StandardEasing),
+                    shrinkTowards = Alignment.Start,
+                    clip = true,
+                ) + fadeOut(tween(70, easing = LinearEasing)),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = destination.label,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = chipFg,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun <S> AnimatedContentTransitionScope<S>.folioThroughZeroTransform() =
     (fadeIn(tween(durationMillis = 170, delayMillis = 90, easing = LinearEasing)) +
         scaleIn(initialScale = 0.92f, animationSpec = tween(170, delayMillis = 90, easing = FastOutSlowInEasing)))
         .togetherWith(
