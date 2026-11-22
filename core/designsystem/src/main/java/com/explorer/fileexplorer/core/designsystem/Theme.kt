@@ -3,7 +3,7 @@ package com.explorer.fileexplorer.core.designsystem
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -103,14 +103,6 @@ private val LightColorScheme = lightColorScheme(
     surfaceContainerHighest = LightSurfaceElevated,
 )
 
-private val FolioShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(32.dp),
-)
-
 val AppTypography = Typography(
     displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 28.sp),
     headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
@@ -125,15 +117,29 @@ val AppTypography = Typography(
     labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 10.sp),
 )
 
-@Composable
+/** Access via `FolioTheme.extendedColors.onSurfaceMuted` inside composables. */
+object FolioTheme {
+    val extendedColors: FolioExtendedColors
+        @androidx.compose.runtime.Composable get() = LocalFolioExtendedColors.current
+}
+
+@androidx.compose.runtime.Composable
 fun FileExplorerTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    content: @Composable () -> Unit,
+    cornerStyle: String = "ROUNDED",
+    content: @androidx.compose.runtime.Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
     val supportsDynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val effectiveMode = if (themeMode == ThemeMode.DYNAMIC && !supportsDynamic) ThemeMode.SYSTEM else themeMode
+
+    val isDark = when (effectiveMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK, ThemeMode.OLED -> true
+        ThemeMode.DYNAMIC -> systemDark
+        ThemeMode.SYSTEM -> systemDark
+    }
 
     val colorScheme = when (effectiveMode) {
         ThemeMode.LIGHT -> LightColorScheme
@@ -148,11 +154,19 @@ fun FileExplorerTheme(
         ThemeMode.SYSTEM -> if (systemDark) DarkColorScheme else LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AppTypography,
-        shapes = FolioShapes,
-        motionScheme = MotionScheme.expressive(),
-        content = content,
-    )
+    val extendedColors = if (isDark) DarkExtendedColors else LightExtendedColors
+    val shapes = getFolioShapes(cornerStyle)
+
+    CompositionLocalProvider(
+        LocalFolioExtendedColors provides extendedColors,
+        LocalCornerStyle provides cornerStyle,
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = AppTypography,
+            shapes = shapes,
+            motionScheme = MotionScheme.expressive(),
+            content = content,
+        )
+    }
 }

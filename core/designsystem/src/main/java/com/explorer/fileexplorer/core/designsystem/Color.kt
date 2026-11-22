@@ -1,6 +1,10 @@
 package com.explorer.fileexplorer.core.designsystem
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+val Black = Color(0xFF000000)
+val White = Color(0xFFFFFFFF)
 
 // Primary palette — deep dark with cyan accent
 val DarkBackground = Color(0xFF0D0D0D)
@@ -25,6 +29,10 @@ val LightSurfaceElevated = Color(0xFFE0E0E0)
 val LightBorder = Color(0xFFCFCFCF)
 val LightTextPrimary = Color(0xFF121212)
 val LightTextSecondary = Color(0xFF4A4A4A)
+
+// Monomail AA-contrast muted surface colors
+val LightOnSurfaceMuted = Color(0xFF5C5C5C)
+val DarkOnSurfaceMuted = Color(0xFFA0A0A0)
 
 // Accent
 val AccentCyan = Color(0xFF00BCD4)
@@ -53,3 +61,39 @@ val ColorDocument = Color(0xFF2196F3)
 val ColorCode = Color(0xFFCDDC39)
 val ColorApk = Color(0xFF00BCD4)
 val ColorDefault = Color(0xFF9E9E9E)
+
+/**
+ * Monomail opacity tokens for consistent text and icon hierarchy across Folio.
+ */
+object MonoOpacity {
+    const val heading = 1.0f
+    const val body = 0.80f
+    const val secondary = 0.60f
+    const val tertiary = 0.45f
+    const val disabled = 0.30f
+    const val subtle = 0.15f
+    const val whisper = 0.08f
+}
+
+/**
+ * Tinted shadow colors for Material 3 surfaces.
+ */
+object MonoShadows {
+    val light = Color(0x1A000000)
+    val medium = Color(0x26000000)
+    val strong = Color(0x33000000)
+    val dark = Color(0x1AFFFFFF)
+    val darkMedium = Color(0x26FFFFFF)
+}
+
+/**
+ * Extra tokens Material 3 ColorScheme doesn't have an explicit slot for.
+ */
+data class FolioExtendedColors(
+    val onSurfaceMuted: Color,
+)
+
+val LightExtendedColors = FolioExtendedColors(onSurfaceMuted = LightOnSurfaceMuted)
+val DarkExtendedColors = FolioExtendedColors(onSurfaceMuted = DarkOnSurfaceMuted)
+
+val LocalFolioExtendedColors = staticCompositionLocalOf { LightExtendedColors }
