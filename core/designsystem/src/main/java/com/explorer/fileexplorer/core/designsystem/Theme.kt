@@ -140,7 +140,11 @@ fun FileExplorerTheme(
         ThemeMode.DARK -> DarkColorScheme
         ThemeMode.OLED -> OledColorScheme
         ThemeMode.DYNAMIC ->
-            if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            } else {
+                if (systemDark) DarkColorScheme else LightColorScheme
+            }
         ThemeMode.SYSTEM -> if (systemDark) DarkColorScheme else LightColorScheme
     }
 
