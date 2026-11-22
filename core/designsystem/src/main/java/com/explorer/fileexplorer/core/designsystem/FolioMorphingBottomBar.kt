@@ -291,15 +291,15 @@ fun FolioMorphingBottomBar(
                                                 .fillMaxHeight()
                                                 .clip(CircleShape)
                                                 .background(chipBg)
-                                                .semantics {
-                                                    selected = isSelected
-                                                    role = Role.Tab
-                                                }
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = ripple(bounded = true),
+                                                    role = Role.Tab,
                                                     onClick = { onDestinationSelected(dest.id) },
-                                                ),
+                                                )
+                                                .semantics {
+                                                    selected = isSelected
+                                                },
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Row(
