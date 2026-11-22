@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.explorer.fileexplorer.plugin"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig { minSdk = 26 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
