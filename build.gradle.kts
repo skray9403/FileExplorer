@@ -13,7 +13,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import javax.xml.parsers.DocumentBuilderFactory
 
-private val MIN_COMPILE_SDK = 36
+private val MIN_COMPILE_SDK = 37
 private val MIN_TARGET_SDK = 35
 private val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
@@ -518,9 +518,6 @@ val scanDependencyAdvisories = tasks.register("scanDependencyAdvisories") {
 }
 
 subprojects {
-    tasks.matching { it.name.contains("AarMetadata", ignoreCase = true) }.configureEach {
-        enabled = false
-    }
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn(verifyAccessibilityLocalization, verifyAndroidUpgradeReadiness, verifyDependencyProvenance)
     }
