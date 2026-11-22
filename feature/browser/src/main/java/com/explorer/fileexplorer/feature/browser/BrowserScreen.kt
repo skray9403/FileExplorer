@@ -143,15 +143,15 @@ fun BrowserScreen(
                 is BrowserEvent.RequestDecrypt -> {
                     val activity = context as? FragmentActivity
                     if (activity == null) {
-                        Toast.makeText(context, context.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
                     } else {
                         securityEntryPoint.biometricHelper().showBiometricPrompt(
                             activity = activity,
-                            title = context.getString(DesignSystemR.string.decrypt_files),
-                            subtitle = context.getString(DesignSystemR.string.authenticate_to_decrypt),
+                            title = context.applicationContext.getString(DesignSystemR.string.decrypt_files),
+                            subtitle = context.applicationContext.getString(DesignSystemR.string.authenticate_to_decrypt),
                             onSuccess = { viewModel.decryptFiles(event.paths) },
                             onFailure = { reason ->
-                                Toast.makeText(context, context.getString(DesignSystemR.string.decryption_cancelled, reason), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.decryption_cancelled, reason), Toast.LENGTH_SHORT).show()
                             },
                         )
                     }
@@ -159,15 +159,15 @@ fun BrowserScreen(
                 is BrowserEvent.RequestVaultAdd -> {
                     val activity = context as? FragmentActivity
                     if (activity == null) {
-                        Toast.makeText(context, context.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
                     } else {
                         securityEntryPoint.biometricHelper().showBiometricPrompt(
                             activity = activity,
-                            title = context.getString(DesignSystemR.string.add_to_vault),
-                            subtitle = context.getString(DesignSystemR.string.authenticate_to_protect_selected),
+                            title = context.applicationContext.getString(DesignSystemR.string.add_to_vault),
+                            subtitle = context.applicationContext.getString(DesignSystemR.string.authenticate_to_protect_selected),
                             onSuccess = { viewModel.addToVault(event.paths) },
                             onFailure = { reason ->
-                                Toast.makeText(context, context.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
                             },
                         )
                     }

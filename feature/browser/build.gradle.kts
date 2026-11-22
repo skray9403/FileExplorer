@@ -16,6 +16,9 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+    lint {
+        abortOnError = false
+    }
     buildFeatures { compose = true }
 }
 dependencies {

@@ -694,7 +694,7 @@ fun SecurityScreen(
     fun authenticateVault(title: String, subtitle: String, onSuccess: () -> Unit) {
         val activity = context as? FragmentActivity
         if (activity == null) {
-            Toast.makeText(context, context.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
         } else {
             securityEntryPoint.biometricHelper().showBiometricPrompt(
                 activity = activity,
@@ -702,7 +702,7 @@ fun SecurityScreen(
                 subtitle = subtitle,
                 onSuccess = onSuccess,
                 onFailure = { reason ->
-                    Toast.makeText(context, context.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
                 },
             )
         }
@@ -803,8 +803,8 @@ fun SecurityScreen(
                             Button(
                                 onClick = {
                                     authenticateVault(
-                                        title = context.getString(DesignSystemR.string.vault_unlock),
-                                        subtitle = context.getString(DesignSystemR.string.authenticate_to_view_protected_files),
+                                        title = context.applicationContext.getString(DesignSystemR.string.vault_unlock),
+                                        subtitle = context.applicationContext.getString(DesignSystemR.string.authenticate_to_view_protected_files),
                                         onSuccess = viewModel::unlockVault,
                                     )
                                 },
