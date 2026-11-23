@@ -22,6 +22,32 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
+ * Lightweight vertical gradient scrim for floating top-bars.
+ * Avoids offscreen GPU compositing passes.
+ */
+@Composable
+fun FolioTopScrim(
+    height: Dp,
+    modifier: Modifier = Modifier,
+    baseColor: Color = MaterialTheme.colorScheme.background,
+) {
+    androidx.compose.foundation.layout.Spacer(
+        modifier = modifier
+            .fillMaxWidth()
+            .androidx.compose.foundation.layout.height(height)
+            .androidx.compose.foundation.background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        baseColor.copy(alpha = 0.92f),
+                        baseColor.copy(alpha = 0.65f),
+                        Color.Transparent,
+                    ),
+                ),
+            ),
+    )
+}
+
+/**
  * Offscreen alpha feather mask for the top viewport edge.
  * Lets full-bleed scrollable lists dissolve smoothly behind a transparent floating top bar
  * without abrupt hard clipping or theme color mismatches.

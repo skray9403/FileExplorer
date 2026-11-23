@@ -9,11 +9,14 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,13 +41,17 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Bookmark
@@ -81,6 +88,8 @@ import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -112,9 +121,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -130,14 +141,16 @@ import com.explorer.fileexplorer.core.database.RecentLocationEntity
 import com.explorer.fileexplorer.core.database.SavedSearchEntity
 import com.explorer.fileexplorer.core.database.TagEntity
 import com.explorer.fileexplorer.core.designsystem.AccentOrange
+import com.explorer.fileexplorer.core.designsystem.FolioFabMenuAction
 import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioSelectionDockActions
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.designsystem.rememberScrollVelocityConnection
-import com.explorer.fileexplorer.core.designsystem.topEdgeFeatherFade
+import kotlinx.coroutines.CancellationException
 import com.explorer.fileexplorer.core.model.FileColumn
 import com.explorer.fileexplorer.core.model.FileItem
 import com.explorer.fileexplorer.core.model.RepositoryFeature
@@ -196,6 +209,13 @@ fun BrowserScreen(
     var showLocationsSheet by remember { mutableStateOf(false) }
     var showSelectionMoreSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showTabsSheet by remember { mutableStateOf(false) }
+
+    val clipboardManager = LocalClipboardManager.current
+    val onCopyCurrentPath = {
+        clipboardManager.setText(AnnotatedString(state.currentPath))
+        Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.path_copied), Toast.LENGTH_SHORT).show()
+    }
 
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
@@ -307,6 +327,10 @@ fun BrowserScreen(
         state.capabilityMatrix,
         showScrollToTop,
         state.viewMode,
+        state.isAtVolumeRoot,
+        state.inlineSearchActive,
+        state.inlineSearchQuery,
+        state.inlineSearchRecursive,
     ) {
         dockController.selectionMode = state.selectionMode
         dockController.selectionActions = FolioSelectionDockActions(
@@ -339,6 +363,44 @@ fun BrowserScreen(
                 }
             }
         }
+        dockController.isSubfolder = !state.isAtVolumeRoot
+        dockController.onNavigateUp = viewModel::navigateUp
+        dockController.onNavigateToRoot = {
+            state.volumes.firstOrNull()?.path?.let(viewModel::navigateTo)
+                ?: viewModel.navigateTo(android.os.Environment.getExternalStorageDirectory().absolutePath)
+        }
+        dockController.inlineSearchActive = state.inlineSearchActive
+        dockController.inlineSearchQuery = state.inlineSearchQuery
+        dockController.inlineSearchRecursive = state.inlineSearchRecursive
+        dockController.onInlineSearchQueryChange = viewModel::setInlineSearchQuery
+        dockController.onInlineSearchScopeToggle = viewModel::toggleInlineSearchScope
+        dockController.onInlineSearchClose = viewModel::closeInlineSearch
+        dockController.onOpenFullSearch = onOpenSearch
+
+        dockController.fabMenuItems = listOf(
+            FolioFabMenuAction(
+                icon = Icons.Rounded.CreateNewFolder,
+                labelRes = DesignSystemR.string.new_folder,
+                enabled = !state.insideArchive && state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY),
+                onClick = viewModel::showNewFolderDialog,
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.EditNote,
+                labelRes = DesignSystemR.string.new_file,
+                enabled = !state.insideArchive && state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_FILE),
+                onClick = viewModel::showNewFileDialog,
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.Usb,
+                labelRes = DesignSystemR.string.mount_usb,
+                onClick = { usbTreePicker.launch(null) },
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.Lan,
+                labelRes = DesignSystemR.string.network_shares,
+                onClick = onOpenNetwork,
+            ),
+        )
     }
 
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
@@ -361,10 +423,14 @@ fun BrowserScreen(
         onDispose { dockController.clearScreenBindings("browser") }
     }
 
-    BackHandler(enabled = state.selectionMode || state.insideArchive || state.currentPath != "/") {
-        when {
-            state.selectionMode -> viewModel.clearSelection()
-            else -> viewModel.navigateUp()
+    PredictiveBackHandler(enabled = state.selectionMode || state.insideArchive || !state.isAtVolumeRoot) { progress ->
+        try {
+            progress.collect { }
+            when {
+                state.selectionMode -> viewModel.clearSelection()
+                else -> viewModel.navigateUp()
+            }
+        } catch (_: CancellationException) {
         }
     }
 
@@ -381,11 +447,9 @@ fun BrowserScreen(
             .background(MaterialTheme.colorScheme.background)
             .nestedScroll(scrollVelocityConnection),
     ) {
-        // Full-bleed browser content with smooth top-edge alpha feather fade
+        // Full-bleed browser content underneath floating bars
         BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .topEdgeFeatherFade(opaqueStartDp = topHeaderHeight - 10.dp, fadeHeightDp = 30.dp),
+            modifier = Modifier.fillMaxSize(),
         ) {
             if (!state.dualPaneEnabled && LargeScreenLayoutPolicy.useThreePane(maxWidth.value.toInt())) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = topHeaderHeight, bottom = 96.dp)) {
@@ -434,96 +498,147 @@ fun BrowserScreen(
                     )
                 }
             } else {
-                PullToRefreshBox(
-                    isRefreshing = state.isLoading,
-                    onRefresh = viewModel::refresh,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (state.viewMode == ViewMode.GRID) {
-                        LazyVerticalGrid(
-                            state = gridState,
-                            columns = GridCells.Adaptive(minSize = 140.dp),
-                            contentPadding = PaddingValues(
-                                top = topHeaderHeight + 8.dp,
-                                bottom = 144.dp,
-                                start = 12.dp,
-                                end = 12.dp,
-                            ),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                BrowserHeaderAccessories(
-                                    state = state,
-                                    onNavigate = viewModel::navigateTo,
-                                    onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
-                                    onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
-                                    onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
-                                    onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
-                                )
-                            }
-                            if (state.files.isEmpty() && !state.isLoading) {
-                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                    EmptyState(state.error)
-                                }
-                            } else {
-                                gridItems(items = state.files, key = { it.path }) { item ->
-                                    FileGridItem(
-                                        item = item,
-                                        isSelected = item.path in state.selectedItems,
-                                        selectionMode = state.selectionMode,
-                                        visibleColumns = state.visibleColumns,
-                                        onClick = { viewModel.onItemClick(item) },
-                                        onLongClick = { viewModel.onItemLongClick(item) },
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            state = listState,
-                            contentPadding = PaddingValues(
-                                top = topHeaderHeight + 8.dp,
-                                bottom = 144.dp,
-                                start = 12.dp,
-                                end = 12.dp,
-                            ),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            item(key = "browser_accessories") {
-                                BrowserHeaderAccessories(
-                                    state = state,
-                                    onNavigate = viewModel::navigateTo,
-                                    onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
-                                    onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
-                                    onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
-                                    onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
-                                )
-                            }
+                val pagerState = rememberPagerState(
+                    initialPage = state.selectedTabIndex.coerceIn(0, (state.tabs.size - 1).coerceAtLeast(0)),
+                    pageCount = { state.tabs.size },
+                )
 
-                            if (state.files.isEmpty() && !state.isLoading) {
-                                item(key = "empty_state") { EmptyState(state.error) }
-                            } else {
-                                items(items = state.files, key = { it.path }) { item ->
-                                    FileListItem(
-                                        item = item,
-                                        isSelected = item.path in state.selectedItems,
-                                        selectionMode = state.selectionMode,
-                                        compact = state.compactDensity,
-                                        visibleColumns = state.visibleColumns,
-                                        showDirectorySizes = state.showDirectorySizes,
-                                        directorySize = state.directorySizes[item.path],
-                                        directorySizeUnavailable = item.path in state.directorySizesUnavailable,
-                                        onClick = { viewModel.onItemClick(item) },
-                                        onLongClick = { viewModel.onItemLongClick(item) },
-                                        onSwipeLeft = { viewModel.applySwipe(item, state.swipeLeftAction) },
-                                        onSwipeRight = { viewModel.applySwipe(item, state.swipeRightAction) },
+                LaunchedEffect(pagerState.currentPage) {
+                    if (pagerState.currentPage != state.selectedTabIndex && pagerState.currentPage in state.tabs.indices) {
+                        viewModel.selectTab(BrowserPane.PRIMARY, pagerState.currentPage)
+                    }
+                }
+
+                LaunchedEffect(state.selectedTabIndex) {
+                    if (pagerState.currentPage != state.selectedTabIndex && state.selectedTabIndex in state.tabs.indices) {
+                        pagerState.animateScrollToPage(state.selectedTabIndex)
+                    }
+                }
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    val currentTab = state.tabs.getOrNull(page)
+                    val pageFiles = if (page == state.selectedTabIndex) {
+                        state.displayedFiles
+                    } else {
+                        currentTab?.let { state.tabFilesCache[it.id] } ?: emptyList()
+                    }
+
+                    val overscrollModifier = if (page == state.tabs.lastIndex) {
+                        Modifier.pointerInput(Unit) {
+                            var dragAmount = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { _, amount -> dragAmount += amount },
+                                onDragEnd = {
+                                    if (dragAmount < -150f) {
+                                        viewModel.openTab(BrowserPane.PRIMARY)
+                                    }
+                                    dragAmount = 0f
+                                },
+                                onDragCancel = { dragAmount = 0f },
+                            )
+                        }
+                    } else Modifier
+
+                    PullToRefreshBox(
+                        isRefreshing = state.isLoading && page == state.selectedTabIndex,
+                        onRefresh = viewModel::refresh,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(overscrollModifier),
+                    ) {
+                        if (state.viewMode == ViewMode.GRID) {
+                            LazyVerticalGrid(
+                                state = gridState,
+                                columns = GridCells.Adaptive(minSize = 140.dp),
+                                contentPadding = PaddingValues(
+                                    top = topHeaderHeight + 8.dp,
+                                    bottom = 144.dp,
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                ),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                    BrowserHeaderAccessories(
+                                        state = state,
+                                        onNavigate = viewModel::navigateTo,
+                                        onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
+                                        onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
+                                        onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
+                                        onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
                                     )
-                                    if (item != state.files.lastOrNull()) {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(start = 68.dp, end = 16.dp),
-                                            thickness = 0.5.dp,
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                }
+                                if (pageFiles.isEmpty() && !state.isLoading) {
+                                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                        EmptyState(state.error)
+                                    }
+                                } else {
+                                    gridItems(items = pageFiles, key = { it.path }) { item ->
+                                        FileGridItem(
+                                            item = item,
+                                            isSelected = item.path in state.selectedItems,
+                                            selectionMode = state.selectionMode,
+                                            visibleColumns = state.visibleColumns,
+                                            onClick = { viewModel.onItemClick(item) },
+                                            onLongClick = { viewModel.onItemLongClick(item) },
                                         )
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                contentPadding = PaddingValues(
+                                    top = topHeaderHeight + 8.dp,
+                                    bottom = 144.dp,
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                ),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                item(key = "browser_accessories") {
+                                    BrowserHeaderAccessories(
+                                        state = state,
+                                        onNavigate = viewModel::navigateTo,
+                                        onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
+                                        onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
+                                        onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
+                                        onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
+                                    )
+                                }
+
+                                if (pageFiles.isEmpty() && !state.isLoading) {
+                                    item(key = "empty_state") { EmptyState(state.error) }
+                                } else {
+                                    items(items = pageFiles, key = { it.path }) { item ->
+                                        FileListItem(
+                                            item = item,
+                                            isSelected = item.path in state.selectedItems,
+                                            selectionMode = state.selectionMode,
+                                            compact = state.compactDensity,
+                                            visibleColumns = state.visibleColumns,
+                                            showDirectorySizes = state.showDirectorySizes,
+                                            directorySize = state.directorySizes[item.path],
+                                            directorySizeUnavailable = item.path in state.directorySizesUnavailable,
+                                            onClick = { viewModel.onItemClick(item) },
+                                            onLongClick = { viewModel.onItemLongClick(item) },
+                                            onSwipeLeft = if (state.swipeLeftAction != SwipeAction.NONE) {
+                                                { viewModel.applySwipe(item, state.swipeLeftAction) }
+                                            } else null,
+                                            onSwipeRight = if (state.swipeRightAction != SwipeAction.NONE) {
+                                                { viewModel.applySwipe(item, state.swipeRightAction) }
+                                            } else null,
+                                        )
+                                        if (item != pageFiles.lastOrNull()) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = 68.dp, end = 16.dp),
+                                                thickness = 0.5.dp,
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -533,12 +648,19 @@ fun BrowserScreen(
             }
         }
 
-        // Minimal Transparent Floating Top Bar (No Hamburger Menu)
+        // Lightweight Scrim behind floating top pills
+        FolioTopScrim(
+            height = topHeaderHeight,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        // Minimal Transparent Floating Top Bar (Screenshot-Style)
         FloatingBrowserTopBar(
             selectionMode = state.selectionMode,
             selectedCount = state.selectedCount,
             locationTitle = activeLocationTitle,
             rootActive = state.rootEnabled && state.isRootPath,
+            tabCount = state.tabs.size,
             viewMode = state.viewMode,
             visibleColumns = state.visibleColumns,
             showHidden = state.showHidden,
@@ -559,6 +681,9 @@ fun BrowserScreen(
                 showSortMenu = false
             },
             onOpenLocations = { showLocationsSheet = true },
+            onCopyPath = onCopyCurrentPath,
+            onOpenTabs = { showTabsSheet = true },
+            onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
             onClearSelection = viewModel::clearSelection,
             onSelectAll = viewModel::selectAll,
             onSearchClick = onOpenSearch,
@@ -569,6 +694,7 @@ fun BrowserScreen(
             onToggleDualPane = viewModel::toggleDualPane,
             onNewFolder = viewModel::showNewFolderDialog,
             onExtractAll = { viewModel.extractArchive() },
+            onOpenSettings = onOpenSettings,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -640,6 +766,34 @@ fun BrowserScreen(
             confirmText = stringResource(DesignSystemR.string.create),
             onConfirm = viewModel::createFolder,
             onDismiss = viewModel::dismissNewFolderDialog,
+        )
+    }
+    if (state.showNewFileDialog) {
+        InputDialog(
+            title = stringResource(DesignSystemR.string.new_file_title),
+            label = stringResource(DesignSystemR.string.file_name),
+            initial = "",
+            confirmText = stringResource(DesignSystemR.string.create),
+            onConfirm = viewModel::createFile,
+            onDismiss = viewModel::dismissNewFileDialog,
+        )
+    }
+    if (showTabsSheet) {
+        TabsBottomSheet(
+            tabs = state.tabs,
+            selectedTabIndex = state.selectedTabIndex,
+            onSelectTab = { index ->
+                showTabsSheet = false
+                viewModel.selectTab(BrowserPane.PRIMARY, index)
+            },
+            onCloseTab = { index ->
+                viewModel.closeTab(BrowserPane.PRIMARY, index)
+            },
+            onAddTab = {
+                showTabsSheet = false
+                viewModel.openTab(BrowserPane.PRIMARY)
+            },
+            onDismiss = { showTabsSheet = false },
         )
     }
     state.renameItem?.let { item ->
@@ -809,6 +963,7 @@ private fun FloatingBrowserTopBar(
     selectedCount: Int,
     locationTitle: String,
     rootActive: Boolean,
+    tabCount: Int,
     viewMode: ViewMode,
     visibleColumns: Set<FileColumn>,
     showHidden: Boolean,
@@ -821,9 +976,11 @@ private fun FloatingBrowserTopBar(
     onDismissSortMenu: () -> Unit,
     onSelectSortField: (SortField) -> Unit,
     onOpenLocations: () -> Unit,
+    onCopyPath: () -> Unit,
+    onOpenTabs: () -> Unit,
+    onAddTab: () -> Unit,
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
-    onSearchClick: () -> Unit,
     onOpenSortMenu: () -> Unit,
     onViewToggle: () -> Unit,
     onToggleHidden: () -> Unit,
@@ -831,6 +988,7 @@ private fun FloatingBrowserTopBar(
     onToggleDualPane: () -> Unit,
     onNewFolder: () -> Unit,
     onExtractAll: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var moreExpanded by remember { mutableStateOf(false) }
@@ -841,20 +999,20 @@ private fun FloatingBrowserTopBar(
             .fillMaxWidth()
             .background(Color.Transparent)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         if (selectionMode) {
-            // Minimal Selection Pill (Actions live in the morphed bottom dock)
             Surface(
                 onClick = onClearSelection,
                 shape = CircleShape,
                 color = colorScheme.primaryContainer,
                 contentColor = colorScheme.onPrimaryContainer,
+                modifier = Modifier.height(42.dp),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Rounded.Close, stringResource(DesignSystemR.string.clear), modifier = Modifier.size(18.dp))
@@ -872,23 +1030,68 @@ private fun FloatingBrowserTopBar(
                 shape = CircleShape,
                 color = colorScheme.surfaceContainerHigh,
                 contentColor = colorScheme.onSurface,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(42.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
                 }
             }
         } else {
-            // Location Switcher Pill (Replaces Hamburger Menu)
+            // Left circular bubble (42.dp): 1 tab -> Add icon, > 1 tabs -> Badged folder icon
             Surface(
-                onClick = onOpenLocations,
+                onClick = { if (tabCount > 1) onOpenTabs() else onAddTab() },
+                shape = CircleShape,
+                color = colorScheme.surfaceContainerHigh,
+                contentColor = colorScheme.onSurface,
+                modifier = Modifier.size(42.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (tabCount > 1) {
+                        BadgedBox(
+                            badge = {
+                                Badge(
+                                    containerColor = colorScheme.primary,
+                                    contentColor = colorScheme.onPrimary,
+                                ) {
+                                    Text("$tabCount")
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.FolderOpen,
+                                contentDescription = stringResource(DesignSystemR.string.tabs),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = stringResource(DesignSystemR.string.add_tab),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // Center Folder Name Pill (single tap -> locations bottom sheet, long press -> copy path)
+            Surface(
                 shape = CircleShape,
                 color = if (rootActive) AccentOrange.copy(alpha = 0.2f) else colorScheme.surfaceContainerHigh,
                 contentColor = if (rootActive) AccentOrange else colorScheme.onSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(42.dp)
+                    .combinedClickable(
+                        onClick = onOpenLocations,
+                        onLongClick = onCopyPath,
+                    ),
             ) {
                 Row(
-                    modifier = Modifier.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                 ) {
                     Icon(Icons.Rounded.Storage, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -898,28 +1101,20 @@ private fun FloatingBrowserTopBar(
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
 
-            // Minimal Trailing Circular Pill Actions
+            Spacer(Modifier.width(8.dp))
+
+            // Right Actions: Cast button + Circular Menu Bubble (42.dp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Surface(
-                    onClick = onSearchClick,
-                    shape = CircleShape,
-                    color = colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Search, stringResource(DesignSystemR.string.search), modifier = Modifier.size(20.dp))
-                    }
-                }
-
                 CastRouteButton()
 
                 Box {
@@ -927,10 +1122,10 @@ private fun FloatingBrowserTopBar(
                         onClick = { moreExpanded = true },
                         shape = CircleShape,
                         color = colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(42.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more_options), modifier = Modifier.size(20.dp))
                         }
                     }
 
@@ -992,6 +1187,12 @@ private fun FloatingBrowserTopBar(
                                 leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
                             )
                         }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text(stringResource(DesignSystemR.string.settings)) },
+                            onClick = { onOpenSettings(); moreExpanded = false },
+                            leadingIcon = { Icon(Icons.Rounded.Settings, null) },
+                        )
                     }
 
                     DropdownMenu(
@@ -1002,14 +1203,15 @@ private fun FloatingBrowserTopBar(
                     ) {
                         SortField.entries.forEach { field ->
                             DropdownMenuItem(
-                                text = { Text(field.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                text = { Text(field.label) },
                                 onClick = { onSelectSortField(field) },
-                                trailingIcon = {
+                                leadingIcon = {
                                     if (sortOrder.field == field) {
                                         Icon(
-                                            if (sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
-                                            null,
-                                            modifier = Modifier.size(16.dp),
+                                            if (sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward
+                                            else Icons.Rounded.ArrowDownward,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                 },
@@ -1020,6 +1222,115 @@ private fun FloatingBrowserTopBar(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TabsBottomSheet(
+    tabs: List<BrowserTab>,
+    selectedTabIndex: Int,
+    onSelectTab: (Int) -> Unit,
+    onCloseTab: (Int) -> Unit,
+    onAddTab: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(DesignSystemR.string.tabs),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                IconButton(onClick = onAddTab) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(DesignSystemR.string.add_tab),
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
+                    val isSelected = index == selectedTabIndex
+                    Surface(
+                        onClick = { onSelectTab(index) },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = tab.path,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (tabs.size > 1) {
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = { onCloseTab(index) },
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = stringResource(DesignSystemR.string.close_tab),
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

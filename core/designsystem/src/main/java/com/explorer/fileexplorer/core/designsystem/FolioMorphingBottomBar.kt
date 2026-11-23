@@ -1,36 +1,22 @@
 package com.explorer.fileexplorer.core.designsystem
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,34 +29,49 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.ContentPaste
-import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
+import androidx.compose.material3.ToggleFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -78,59 +79,24 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-private val PillHeight = 56.dp
-private val CollapsedPillWidth = 56.dp
-private val InterPillGap = 8.dp
-
-enum class FolioBottomBarMode {
-    /** Resting Dock: [Browse | Collections | Network | Tools] [+ or Paste] */
-    DOCK_TABS,
-
-    /** Fast Scroll Down: [🔍] [+ New folder] */
-    SCROLL_ACTION,
-
-    /** Fast Scroll Up: [🔍 Search] [+] */
-    SCROLL_SEARCH,
-
-    /** File Selection Mode: [Cut | Copy] [Delete | More] (or Archive Extract) */
-    SELECTION_ACTIONS,
-}
-
-private enum class LeftSlotKind {
-    DOCK_TABS,
-    SCROLL_SEARCH_COLLAPSED,
-    SCROLL_SEARCH_EXPANDED,
-    SELECTION_EDIT,
-    SELECTION_ARCHIVE,
-}
-
-private enum class RightSlotKind {
-    ACTION_FAB,
-    PASTE_FAB,
-    ACTION_EXPANDED,
-    SELECTION_MANAGE,
-}
-
-data class FolioNavDestination(
+private data class FolioNavDestination(
     val id: String,
-    val label: String,
+    val labelRes: Int,
     val icon: ImageVector,
 )
 
 /**
- * Persistent hoisted 2-slot M3 Expressive floating bottom bar for Folio.
+ * Native Material 3 Expressive 3-slot floating bottom dock.
  *
- * - Both outer [Surface] containers stay mounted permanently; widths interpolate via
- *   [animateDpAsState] (`200ms` M3 Standard for scroll morph, `spring(0.85f, 500f)` for
- *   selection & mode transforms) and colors via critically-damped `stiffness = 1400f`.
- * - Through-zero inner content swap (`80ms` out, `90ms` delay + `170ms` in) prevents ghosting.
- * - Independent offset-gated `↑` scroll-to-top slot floats `12.dp` above the bar (`Δy = 0`).
+ * Slot 1: Primary Toolbar ([HorizontalFloatingToolbar]) - Subfolder back/search/home or root tabs.
+ * Slot 2: Task & Progress Pill - Displays badge count & aggregate progress fill when background tasks exist.
+ * Slot 3: Action FAB / Menu - Paste pill or [FloatingActionButtonMenu] + [ToggleFloatingActionButton].
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FolioMorphingBottomBar(
     selectedDestination: String,
@@ -139,55 +105,17 @@ fun FolioMorphingBottomBar(
     onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val mode = controller.resolvedMode
-    val selection = controller.selectionActions
-    val isScrollPair = mode == FolioBottomBarMode.SCROLL_ACTION || mode == FolioBottomBarMode.SCROLL_SEARCH
-    val showPasteFab = controller.canPaste && mode != FolioBottomBarMode.SELECTION_ACTIONS
-
-    val spatialSpec = if (isScrollPair) {
-        tween<Dp>(durationMillis = 200, easing = M3StandardEasing)
-    } else {
-        spring<Dp>(dampingRatio = 0.85f, stiffness = 500f)
-    }
-
-    val effectsColorSpec = spring<Color>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = 1400f,
-    )
-
+    val reducedMotion = LocalReducedMotion.current
+    var fabMenuExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
 
-    val leftContainerTarget = when (mode) {
-        FolioBottomBarMode.DOCK_TABS -> colorScheme.surfaceContainerHigh
-        FolioBottomBarMode.SCROLL_ACTION, FolioBottomBarMode.SCROLL_SEARCH -> colorScheme.surfaceContainerHigh
-        FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.surfaceContainerHigh
+    val destinations = remember {
+        listOf(
+            FolioNavDestination("browser", R.string.browse, Icons.Rounded.Folder),
+            FolioNavDestination("collections", R.string.collections, Icons.Rounded.GridView),
+            FolioNavDestination("tools", R.string.tools, Icons.Rounded.Widgets),
+        )
     }
-    val leftContentTarget = colorScheme.onSurface
-
-    val rightContainerTarget = when {
-        mode == FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.surfaceContainerHigh
-        showPasteFab -> colorScheme.primary
-        mode == FolioBottomBarMode.DOCK_TABS || mode == FolioBottomBarMode.SCROLL_ACTION -> colorScheme.primaryContainer
-        else -> colorScheme.secondaryContainer
-    }
-    val rightContentTarget = when {
-        mode == FolioBottomBarMode.SELECTION_ACTIONS -> colorScheme.onSurface
-        showPasteFab -> colorScheme.onPrimary
-        mode == FolioBottomBarMode.DOCK_TABS || mode == FolioBottomBarMode.SCROLL_ACTION -> colorScheme.onPrimaryContainer
-        else -> colorScheme.onSecondaryContainer
-    }
-
-    val leftContainerColor by animateColorAsState(leftContainerTarget, effectsColorSpec, label = "folioLeftBg")
-    val leftContentColor by animateColorAsState(leftContentTarget, effectsColorSpec, label = "folioLeftFg")
-    val rightContainerColor by animateColorAsState(rightContainerTarget, effectsColorSpec, label = "folioRightBg")
-    val rightContentColor by animateColorAsState(rightContentTarget, effectsColorSpec, label = "folioRightFg")
-
-    val destinations = listOf(
-        FolioNavDestination("browser", stringResource(R.string.browse), Icons.Rounded.Folder),
-        FolioNavDestination("collections", stringResource(R.string.collections), Icons.Rounded.GridView),
-        FolioNavDestination("network", stringResource(R.string.network), Icons.Rounded.Lan),
-        FolioNavDestination("tools", stringResource(R.string.tools), Icons.Rounded.Widgets),
-    )
 
     Column(
         modifier = modifier
@@ -196,15 +124,11 @@ fun FolioMorphingBottomBar(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Independent scroll-to-top button (offset-gated > 160dp, Δy = 0 on bottom pills)
+        // Independent scroll-to-top button
         AnimatedVisibility(
-            visible = controller.showScrollToTop && mode != FolioBottomBarMode.SELECTION_ACTIONS,
-            enter = fadeIn(tween(120)) +
-                scaleIn(tween(120), initialScale = 0.75f) +
-                slideInVertically(tween(120)) { it / 3 },
-            exit = fadeOut(tween(100)) +
-                scaleOut(tween(100), targetScale = 0.75f) +
-                slideOutVertically(tween(100)) { it / 3 },
+            visible = controller.showScrollToTop && !controller.selectionMode && !controller.inlineSearchActive,
+            enter = if (reducedMotion) fadeIn(tween(80)) else (fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.75f) + slideInVertically(tween(120)) { it / 3 }),
+            exit = if (reducedMotion) fadeOut(tween(80)) else (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.75f) + slideOutVertically(tween(100)) { it / 3 }),
         ) {
             Box(modifier = Modifier.padding(bottom = 12.dp)) {
                 Surface(
@@ -216,7 +140,7 @@ fun FolioMorphingBottomBar(
                     color = colorScheme.surfaceContainerHigh,
                     contentColor = colorScheme.onSurface,
                     shadowElevation = 4.dp,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(42.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -229,385 +153,431 @@ fun FolioMorphingBottomBar(
             }
         }
 
-        // Persistent 2-slot morphing container cluster
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            val usableWidth = (maxWidth - InterPillGap).coerceAtLeast(180.dp)
-
-            val leftTargetWidth = when (mode) {
-                FolioBottomBarMode.DOCK_TABS -> {
-                    val rightW = if (showPasteFab) 104.dp else CollapsedPillWidth
-                    (usableWidth - rightW).coerceAtLeast(196.dp)
-                }
-                FolioBottomBarMode.SCROLL_ACTION -> CollapsedPillWidth
-                FolioBottomBarMode.SCROLL_SEARCH -> 146.dp.coerceAtMost(usableWidth - CollapsedPillWidth)
-                FolioBottomBarMode.SELECTION_ACTIONS -> usableWidth / 2f
-            }
-
-            val rightTargetWidth = when (mode) {
-                FolioBottomBarMode.DOCK_TABS -> if (showPasteFab) 104.dp else CollapsedPillWidth
-                FolioBottomBarMode.SCROLL_ACTION -> 152.dp.coerceAtMost(usableWidth - CollapsedPillWidth)
-                FolioBottomBarMode.SCROLL_SEARCH -> CollapsedPillWidth
-                FolioBottomBarMode.SELECTION_ACTIONS -> usableWidth / 2f
-            }
-
-            val leftWidth by animateDpAsState(leftTargetWidth, spatialSpec, label = "folioLeftWidth")
-            val rightWidth by animateDpAsState(rightTargetWidth, spatialSpec, label = "folioRightWidth")
-
-            val leftSlotKind = when (mode) {
-                FolioBottomBarMode.DOCK_TABS -> LeftSlotKind.DOCK_TABS
-                FolioBottomBarMode.SCROLL_ACTION -> LeftSlotKind.SCROLL_SEARCH_COLLAPSED
-                FolioBottomBarMode.SCROLL_SEARCH -> LeftSlotKind.SCROLL_SEARCH_EXPANDED
-                FolioBottomBarMode.SELECTION_ACTIONS -> {
-                    if (selection.insideArchive) LeftSlotKind.SELECTION_ARCHIVE else LeftSlotKind.SELECTION_EDIT
-                }
-            }
-
-            val rightSlotKind = when {
-                mode == FolioBottomBarMode.SELECTION_ACTIONS -> RightSlotKind.SELECTION_MANAGE
-                showPasteFab -> RightSlotKind.PASTE_FAB
-                mode == FolioBottomBarMode.SCROLL_ACTION -> RightSlotKind.ACTION_EXPANDED
-                else -> RightSlotKind.ACTION_FAB
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(InterPillGap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // LEFT PERSISTENT PILL
+        when {
+            // Mode 1: Inline Search Active
+            controller.inlineSearchActive -> {
                 Surface(
                     shape = CircleShape,
-                    color = leftContainerColor,
-                    contentColor = leftContentColor,
+                    color = colorScheme.surfaceContainerHigh,
+                    contentColor = colorScheme.onSurface,
                     shadowElevation = 6.dp,
-                    border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.4f)),
                     modifier = Modifier
-                        .width(leftWidth)
-                        .height(PillHeight)
-                        .clip(CircleShape),
+                        .fillMaxWidth()
+                        .height(56.dp),
                 ) {
-                    AnimatedContent(
-                        targetState = leftSlotKind,
-                        transitionSpec = { folioThroughZeroTransform() },
-                        label = "folioLeftSlotContent",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { kind ->
-                        when (kind) {
-                            LeftSlotKind.DOCK_TABS -> {
-                                Row(
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = controller.onInlineSearchClose) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = stringResource(R.string.close_search),
+                            )
+                        }
+
+                        BasicTextField(
+                            value = controller.inlineSearchQuery,
+                            onValueChange = controller.onInlineSearchQueryChange,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = colorScheme.onSurface),
+                            cursorBrush = SolidColor(colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { controller.onOpenFullSearch() }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                            decorationBox = { innerTextField ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (controller.inlineSearchQuery.isEmpty()) {
+                                        Text(
+                                            text = stringResource(R.string.search_hint),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                        )
+
+                        // Scope Toggle Chip (Folder / All)
+                        Surface(
+                            onClick = controller.onInlineSearchScopeToggle,
+                            shape = CircleShape,
+                            color = if (controller.inlineSearchRecursive) colorScheme.primaryContainer else colorScheme.surfaceContainerHighest,
+                            contentColor = if (controller.inlineSearchRecursive) colorScheme.onPrimaryContainer else colorScheme.onSurfaceVariant,
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(if (controller.inlineSearchRecursive) R.string.all_scope else R.string.folder_scope),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+
+                        if (controller.inlineSearchQuery.isNotEmpty()) {
+                            IconButton(onClick = { controller.onInlineSearchQueryChange("") }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.clear_search),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Mode 2: Multi-Item Selection Mode
+            controller.selectionMode -> {
+                val actions = controller.selectionActions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Left Selection Pill: Cut | Copy or Extract
+                    Surface(
+                        shape = CircleShape,
+                        color = colorScheme.surfaceContainerHigh,
+                        contentColor = colorScheme.onSurface,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                    ) {
+                        if (actions.insideArchive) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable(enabled = actions.canExtract, onClick = actions.onExtract),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.Unarchive, null, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.extract_all),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable(enabled = actions.canMove, onClick = actions.onCut),
+                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    destinations.forEach { dest ->
-                                        FolioDockChip(
-                                            destination = dest,
-                                            isSelected = dest.id == selectedDestination,
-                                            onClick = { onDestinationSelected(dest.id) },
-                                            modifier = Modifier.weight(1f),
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.ContentCut, null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = stringResource(R.string.cut),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable(enabled = actions.canCopy, onClick = actions.onCopy),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = stringResource(R.string.copy),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
                                         )
                                     }
                                 }
                             }
+                        }
+                    }
 
-                            LeftSlotKind.SCROLL_SEARCH_COLLAPSED -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true),
-                                            onClick = onSearchClick,
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
+                    // Right Selection Pill: Delete | More
+                    Surface(
+                        shape = CircleShape,
+                        color = colorScheme.surfaceContainerHigh,
+                        contentColor = colorScheme.onSurface,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .combinedClickable(
+                                        enabled = actions.canDelete || actions.canTrash,
+                                        onClick = actions.onDelete,
+                                        onLongClick = actions.onPermanentDelete,
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Rounded.Search,
-                                        contentDescription = stringResource(R.string.search),
-                                        modifier = Modifier.size(22.dp),
+                                        imageVector = Icons.Rounded.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = if (actions.canDelete || actions.canTrash) colorScheme.error else colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.delete),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (actions.canDelete || actions.canTrash) colorScheme.error else colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                                     )
                                 }
                             }
-
-                            LeftSlotKind.SCROLL_SEARCH_EXPANDED -> {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true),
-                                            onClick = onSearchClick,
-                                        )
-                                        .padding(horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Search,
-                                        contentDescription = stringResource(R.string.search),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                    Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clickable(onClick = actions.onMore),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(4.dp))
                                     Text(
-                                        text = stringResource(R.string.search),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
+                                        text = stringResource(R.string.more),
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Medium,
                                     )
                                 }
                             }
-
-                            LeftSlotKind.SELECTION_EDIT -> {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .alpha(if (selection.canMove) 1f else 0.38f)
-                                            .clickable(enabled = selection.canMove, onClick = selection.onCut),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(Icons.Rounded.ContentCut, null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            text = stringResource(R.string.cut),
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Clip,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .width(1.dp)
-                                            .height(20.dp)
-                                            .background(colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                                    )
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .alpha(if (selection.canCopy) 1f else 0.38f)
-                                            .clickable(enabled = selection.canCopy, onClick = selection.onCopy),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            text = stringResource(R.string.copy),
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Clip,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                }
-                            }
-
-                            LeftSlotKind.SELECTION_ARCHIVE -> {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .alpha(if (selection.canExtract) 1f else 0.38f)
-                                        .clickable(enabled = selection.canExtract, onClick = selection.onExtract),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Icon(Icons.Rounded.Unarchive, null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = stringResource(R.string.extract_all),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
                         }
                     }
                 }
+            }
 
-                // RIGHT PERSISTENT PILL
-                Surface(
-                    shape = CircleShape,
-                    color = rightContainerColor,
-                    contentColor = rightContentColor,
-                    shadowElevation = 6.dp,
-                    border = if (mode == FolioBottomBarMode.SELECTION_ACTIONS) {
-                        BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    } else {
-                        null
-                    },
-                    modifier = Modifier
-                        .width(rightWidth)
-                        .height(PillHeight)
-                        .clip(CircleShape),
+            // Mode 3: Normal Resting 3-Slot Dock
+            else -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AnimatedContent(
-                        targetState = rightSlotKind,
-                        transitionSpec = { folioThroughZeroTransform() },
-                        label = "folioRightSlotContent",
-                        modifier = Modifier.fillMaxSize(),
-                    ) { kind ->
-                        when (kind) {
-                            RightSlotKind.ACTION_FAB -> {
-                                val actionEnabled = controller.canCreatePrimaryAction
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .alpha(if (actionEnabled) 1f else 0.5f)
-                                        .clickable(
-                                            enabled = actionEnabled,
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true),
-                                            onClick = controller.onPrimaryAction,
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = if (selectedDestination == "browser") Icons.Rounded.Add else Icons.Rounded.Search,
-                                        contentDescription = stringResource(R.string.new_folder),
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
+                    // Slot 1: Primary Toolbar
+                    HorizontalFloatingToolbar(
+                        expanded = true,
+                        modifier = Modifier.height(56.dp),
+                    ) {
+                        if (controller.isSubfolder) {
+                            // Subfolder Navigation Toolbar: [← Back | 🔍 Search | ⌂ Home]
+                            IconButton(onClick = controller.onNavigateUp) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = stringResource(R.string.back),
+                                )
                             }
+                            IconButton(onClick = { controller.inlineSearchActive = true }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Search,
+                                    contentDescription = stringResource(R.string.search),
+                                )
+                            }
+                            IconButton(onClick = controller.onNavigateToRoot) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Home,
+                                    contentDescription = stringResource(R.string.home),
+                                )
+                            }
+                        } else {
+                            // Root Dock Navigation: [Browse | Collections | Tools | Search]
+                            destinations.forEach { dest ->
+                                val isSelected = selectedDestination == dest.id
+                                val pillBg by animateColorAsState(
+                                    targetValue = if (isSelected) colorScheme.primaryContainer else Color.Transparent,
+                                    animationSpec = tween(180),
+                                    label = "tab_pill_bg",
+                                )
+                                val pillFg by animateColorAsState(
+                                    targetValue = if (isSelected) colorScheme.onPrimaryContainer else colorScheme.onSurfaceVariant,
+                                    animationSpec = tween(180),
+                                    label = "tab_pill_fg",
+                                )
 
-                            RightSlotKind.PASTE_FAB -> {
-                                Row(
+                                Surface(
+                                    onClick = { onDestinationSelected(dest.id) },
+                                    shape = CircleShape,
+                                    color = pillBg,
+                                    contentColor = pillFg,
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true),
-                                            onClick = controller.onPaste,
+                                        .height(42.dp)
+                                        .semantics { selected = isSelected },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            imageVector = dest.icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
                                         )
-                                        .padding(horizontal = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Icon(Icons.Rounded.ContentPaste, null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        text = stringResource(R.string.paste),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
-
-                            RightSlotKind.ACTION_EXPANDED -> {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable(
-                                            enabled = controller.canCreatePrimaryAction,
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true),
-                                            onClick = controller.onPrimaryAction,
-                                        )
-                                        .padding(horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.CreateNewFolder,
-                                        contentDescription = stringResource(R.string.new_folder),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = stringResource(R.string.new_folder),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
-
-                            RightSlotKind.SELECTION_MANAGE -> {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (!selection.insideArchive) {
-                                        val deleteEnabled = selection.canTrash || selection.canDelete
-                                        Row(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxHeight()
-                                                .alpha(if (deleteEnabled) 1f else 0.38f)
-                                                .combinedClickable(
-                                                    enabled = deleteEnabled,
-                                                    onClick = { if (selection.canTrash) selection.onDelete() else selection.onPermanentDelete() },
-                                                    onLongClick = selection.onPermanentDelete,
-                                                ),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center,
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.DeleteOutline,
-                                                contentDescription = stringResource(R.string.delete),
-                                                tint = colorScheme.error,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                            Spacer(Modifier.width(4.dp))
+                                        if (isSelected) {
+                                            Spacer(Modifier.width(6.dp))
                                             Text(
-                                                text = stringResource(R.string.delete),
-                                                color = colorScheme.error,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Clip,
+                                                text = stringResource(dest.labelRes),
                                                 style = MaterialTheme.typography.labelLarge,
                                                 fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
                                             )
                                         }
-                                        Box(
-                                            modifier = Modifier
-                                                .width(1.dp)
-                                                .height(20.dp)
-                                                .background(colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clickable(onClick = selection.onMore),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = stringResource(R.string.more),
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Clip,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
                                     }
                                 }
+                            }
+
+                            IconButton(onClick = onSearchClick) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Search,
+                                    contentDescription = stringResource(R.string.search),
+                                )
+                            }
+                        }
+                    }
+
+                    // Slot 2: Task & Progress Pill (Visible when active jobs exist)
+                    if (controller.taskBadgeCount > 0) {
+                        Spacer(Modifier.width(8.dp))
+                        val progress = controller.taskProgress
+                        val hasConflict = controller.taskHasConflict
+                        val progressFillColor = if (hasConflict) {
+                            colorScheme.errorContainer.copy(alpha = 0.5f)
+                        } else {
+                            colorScheme.primary.copy(alpha = 0.22f)
+                        }
+
+                        Surface(
+                            onClick = { controller.onTaskPillClick?.invoke() },
+                            shape = CircleShape,
+                            color = colorScheme.surfaceContainerHigh,
+                            contentColor = if (hasConflict) colorScheme.error else colorScheme.primary,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .height(56.dp)
+                                .clip(CircleShape)
+                                .drawBehind {
+                                    if (progress != null && progress > 0f) {
+                                        drawRect(
+                                            color = progressFillColor,
+                                            size = androidx.compose.ui.geometry.Size(
+                                                width = size.width * progress.coerceIn(0f, 1f),
+                                                height = size.height,
+                                            ),
+                                        )
+                                    }
+                                },
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 14.dp)
+                                    .fillMaxHeight(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SwapHoriz,
+                                    contentDescription = stringResource(R.string.tasks_and_progress),
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "${controller.taskBadgeCount}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+
+                    // Slot 3: Action FAB / FAB Menu
+                    Spacer(Modifier.width(8.dp))
+                    if (controller.canPaste) {
+                        Surface(
+                            onClick = controller.onPaste,
+                            shape = CircleShape,
+                            color = colorScheme.primary,
+                            contentColor = colorScheme.onPrimary,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.height(56.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .fillMaxHeight(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentPaste,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.paste_here),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    } else if (controller.fabMenuItems.isNotEmpty()) {
+                        FloatingActionButtonMenu(
+                            expanded = fabMenuExpanded,
+                            button = {
+                                ToggleFloatingActionButton(
+                                    checked = fabMenuExpanded,
+                                    onCheckedChange = { fabMenuExpanded = it },
+                                    containerSize = { 56.dp },
+                                    containerCornerRadius = { 28.dp },
+                                ) {
+                                    val rotation by animateFloatAsState(
+                                        targetValue = if (fabMenuExpanded) 45f else 0f,
+                                        label = "fab_rotation",
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = stringResource(if (fabMenuExpanded) R.string.close else R.string.more_options),
+                                        modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                                    )
+                                }
+                            },
+                        ) {
+                            controller.fabMenuItems.forEach { action ->
+                                FloatingActionButtonMenuItem(
+                                    onClick = {
+                                        fabMenuExpanded = false
+                                        action.onClick()
+                                    },
+                                    text = { Text(stringResource(action.labelRes)) },
+                                    icon = { Icon(action.icon, null) },
+                                )
                             }
                         }
                     }
@@ -616,97 +586,3 @@ fun FolioMorphingBottomBar(
         }
     }
 }
-
-@Composable
-private fun FolioDockChip(
-    destination: FolioNavDestination,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    val effectsSpec = MonoSpring.noBounceColor<Color>()
-
-    val chipBg by animateColorAsState(
-        targetValue = if (isSelected) colorScheme.secondaryContainer else Color.Transparent,
-        animationSpec = effectsSpec,
-        label = "folioChipBg_${destination.id}",
-    )
-    val chipFg by animateColorAsState(
-        targetValue = if (isSelected) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
-        animationSpec = effectsSpec,
-        label = "folioChipFg_${destination.id}",
-    )
-
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
-        animationSpec = MonoSpring.bouncy(),
-        label = "folioChipPress_${destination.id}",
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
-            .clip(CircleShape)
-            .background(chipBg)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(bounded = true),
-                role = Role.Tab,
-                onClick = onClick,
-            )
-            .semantics { selected = isSelected },
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        ) {
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = destination.label,
-                tint = chipFg,
-                modifier = Modifier.size(20.dp),
-            )
-            AnimatedVisibility(
-                visible = isSelected,
-                enter = expandHorizontally(
-                    animationSpec = tween(200, easing = M3StandardEasing),
-                    expandFrom = Alignment.Start,
-                    clip = true,
-                ) + fadeIn(tween(110, delayMillis = 40, easing = LinearEasing)),
-                exit = shrinkHorizontally(
-                    animationSpec = tween(200, easing = M3StandardEasing),
-                    shrinkTowards = Alignment.Start,
-                    clip = true,
-                ) + fadeOut(tween(70, easing = LinearEasing)),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        text = destination.label,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Clip,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = chipFg,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun <S> AnimatedContentTransitionScope<S>.folioThroughZeroTransform() =
-    (fadeIn(tween(durationMillis = 170, delayMillis = 90, easing = LinearEasing)) +
-        scaleIn(initialScale = 0.92f, animationSpec = tween(170, delayMillis = 90, easing = FastOutSlowInEasing)))
-        .togetherWith(
-            fadeOut(tween(durationMillis = 80, easing = LinearEasing)) +
-                scaleOut(targetScale = 0.92f, animationSpec = tween(80, easing = FastOutSlowInEasing)),
-        )
-        .using(SizeTransform(clip = false))

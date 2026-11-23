@@ -9,7 +9,6 @@ fun FolioNavigationDock(
     controller: FolioDockController,
     onBrowse: () -> Unit,
     onCollections: () -> Unit,
-    onNetwork: () -> Unit,
     onTools: () -> Unit,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
@@ -20,7 +19,6 @@ fun FolioNavigationDock(
             when (destId) {
                 "browser" -> onBrowse()
                 "collections" -> onCollections()
-                "network" -> onNetwork()
                 "tools" -> onTools()
             }
         },

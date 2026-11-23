@@ -14,9 +14,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -82,17 +86,27 @@ object Routes {
 fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     initialPath: String? = null,
+    dockViewModel: DockStateViewModel = hiltViewModel(),
 ) {
     val dockController = remember { FolioDockController() }
+    val dockSnapshot by dockViewModel.snapshot.collectAsStateWithLifecycle()
+    var showTaskSheet by remember { mutableStateOf(false) }
+
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
     val selectedDestination = when (currentRoute) {
         Routes.BROWSER, Routes.BROWSER_AT_PATH -> "browser"
         Routes.COLLECTIONS -> "collections"
-        Routes.NETWORK -> "network"
         Routes.TOOLS -> "tools"
         else -> null
+    }
+
+    LaunchedEffect(dockSnapshot) {
+        dockController.taskBadgeCount = dockSnapshot.totalBadgeCount
+        dockController.taskProgress = dockSnapshot.aggregateProgress
+        dockController.taskHasConflict = dockSnapshot.hasConflict
+        dockController.onTaskPillClick = { showTaskSheet = true }
     }
 
     LaunchedEffect(currentRoute) {
@@ -313,9 +327,17 @@ fun AppNavigation(
                     controller = dockController,
                     onBrowse = { navigateTopLevel(Routes.BROWSER) },
                     onCollections = { navigateTopLevel(Routes.COLLECTIONS) },
-                    onNetwork = { navigateTopLevel(Routes.NETWORK) },
                     onTools = { navigateTopLevel(Routes.TOOLS) },
                     onSearch = { navController.navigate(Routes.SEARCH) },
+                )
+            }
+
+            if (showTaskSheet) {
+                StackedTaskProgressBottomSheet(
+                    snapshot = dockSnapshot,
+                    viewModel = dockViewModel,
+                    onExecuteClipboardTask = dockController.onExecuteClipboardTask,
+                    onDismiss = { showTaskSheet = false },
                 )
             }
         }

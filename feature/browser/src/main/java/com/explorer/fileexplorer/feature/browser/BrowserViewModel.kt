@@ -129,6 +129,13 @@ data class BrowserUiState(
     val secondarySelectedItems: Set<String> = emptySet(),
     val pendingDrop: PendingDrop? = null,
     val clipboardQueue: List<QueuedClipboardTask> = emptyList(),
+    val tabFilesCache: Map<Long, List<FileItem>> = emptyMap(),
+    val inlineSearchActive: Boolean = false,
+    val inlineSearchQuery: String = "",
+    val inlineSearchRecursive: Boolean = false,
+    val inlineSearchResults: List<FileItem> = emptyList(),
+    val isInlineSearching: Boolean = false,
+    val showNewFileDialog: Boolean = false,
     val tabs: List<BrowserTab> = listOf(
         BrowserTab(1L, Environment.getExternalStorageDirectory().absolutePath),
     ),
@@ -143,9 +150,19 @@ data class BrowserUiState(
     val canGoBack: Boolean get() = historyIndex > 0 || insideArchive
     val canGoForward: Boolean get() = historyIndex < pathHistory.lastIndex
     val canPaste: Boolean get() = (clipboardQueue.isNotEmpty() || clipboard.items.isNotEmpty()) && !insideArchive
+    val isAtVolumeRoot: Boolean get() {
+        if (insideArchive) return false
+        val normalized = currentPath.trimEnd('/').ifBlank { "/" }
+        if (normalized == "/") return true
+        if (normalized == Environment.getExternalStorageDirectory().absolutePath.trimEnd('/')) return true
+        if (volumes.any { it.path.trimEnd('/') == normalized }) return true
+        if (usbRoots.any { it.path.trimEnd('/') == normalized }) return true
+        return false
+    }
     val isRootPath: Boolean get() = currentPath.let { p ->
         listOf("/data", "/system", "/vendor", "/product", "/efs").any { p.startsWith(it) }
     }
+    val displayedFiles: List<FileItem> get() = if (inlineSearchActive && inlineSearchQuery.isNotBlank()) inlineSearchResults else files
 }
 
 enum class BrowserPane {
@@ -485,8 +502,11 @@ class BrowserViewModel @Inject constructor(
                     val selinux = if (_state.value.rootEnabled && rootHelper.requiresRoot(path)) {
                         rootRepo.getSelinuxContext(path)
                     } else null
+                    val currentTabId = _state.value.tabs.getOrNull(_state.value.selectedTabIndex)?.id
                     _state.update {
+                        val newCache = if (currentTabId != null) it.tabFilesCache + (currentTabId to sorted) else it.tabFilesCache
                         it.copy(currentPath = path, files = sorted, isLoading = false,
+                            tabFilesCache = newCache,
                             pathHistory = history, historyIndex = history.lastIndex,
                             insideArchive = false, archivePath = null, archiveInternalPath = "",
                             selinuxContext = selinux,
@@ -662,9 +682,11 @@ class BrowserViewModel @Inject constructor(
         val state = _state.value
         if (pane == BrowserPane.PRIMARY) {
             if (state.tabs.size <= 1 || state.tabs.getOrNull(index) == null) return
+            val closedTab = state.tabs.getOrNull(index)
             val tabs = state.tabs.toMutableList().apply { removeAt(index) }
             val selected = TabIndexPolicy.selectedIndexAfterClose(state.selectedTabIndex, index, tabs.lastIndex)
-            _state.update { it.copy(tabs = tabs, selectedTabIndex = selected) }
+            val newCache = if (closedTab != null) state.tabFilesCache - closedTab.id else state.tabFilesCache
+            _state.update { it.copy(tabs = tabs, selectedTabIndex = selected, tabFilesCache = newCache) }
             if (index == state.selectedTabIndex) navigateTo(tabs[selected].path)
         } else {
             if (state.secondaryTabs.size <= 1 || state.secondaryTabs.getOrNull(index) == null) return
@@ -1417,6 +1439,110 @@ class BrowserViewModel @Inject constructor(
 
     fun showNewFolderDialog() { _state.update { it.copy(showNewFolderDialog = true) } }
     fun dismissNewFolderDialog() { _state.update { it.copy(showNewFolderDialog = false) } }
+
+    fun showNewFileDialog() { _state.update { it.copy(showNewFileDialog = true) } }
+    fun dismissNewFileDialog() { _state.update { it.copy(showNewFileDialog = false) } }
+
+    fun createFile(name: String) {
+        viewModelScope.launch {
+            val path = if (UsbPathCodec.isUsbPath(_state.value.currentPath)) {
+                UsbPathCodec.childPath(_state.value.currentPath, name)
+            } else {
+                "${_state.value.currentPath}/$name"
+            }
+            val repository = repoFactory.getRepository(path)
+            val matrix = repository.capabilityMatrix(path)
+            diagnosticLog.logCapabilities(matrix)
+            if (!matrix.isActionEnabled(RepositoryOperation.CREATE_FILE)) {
+                _events.emit(BrowserEvent.Toast(matrix.explanation(RepositoryOperation.CREATE_FILE)))
+                return@launch
+            }
+            repository.createFile(path)
+                .onSuccess { _state.update { it.copy(showNewFileDialog = false) }; refresh() }
+                .onFailure { e -> _events.emit(BrowserEvent.Toast("Create file failed: ${e.message}")) }
+        }
+    }
+
+    private var inlineSearchJob: Job? = null
+
+    fun setInlineSearchActive(active: Boolean) {
+        if (!active) {
+            closeInlineSearch()
+            return
+        }
+        _state.update {
+            it.copy(
+                inlineSearchActive = true,
+                inlineSearchQuery = "",
+                inlineSearchResults = emptyList(),
+                isInlineSearching = false,
+            )
+        }
+    }
+
+    fun setInlineSearchQuery(query: String) {
+        _state.update { it.copy(inlineSearchQuery = query) }
+        executeInlineSearch(query, _state.value.inlineSearchRecursive)
+    }
+
+    fun toggleInlineSearchScope() {
+        val newRecursive = !_state.value.inlineSearchRecursive
+        _state.update { it.copy(inlineSearchRecursive = newRecursive) }
+        executeInlineSearch(_state.value.inlineSearchQuery, newRecursive)
+    }
+
+    fun closeInlineSearch() {
+        inlineSearchJob?.cancel()
+        inlineSearchJob = null
+        _state.update {
+            it.copy(
+                inlineSearchActive = false,
+                inlineSearchQuery = "",
+                inlineSearchResults = emptyList(),
+                isInlineSearching = false,
+            )
+        }
+    }
+
+    private fun executeInlineSearch(query: String, recursive: Boolean) {
+        inlineSearchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _state.update { it.copy(inlineSearchResults = emptyList(), isInlineSearching = false) }
+            return
+        }
+        val current = _state.value
+        if (!recursive) {
+            inlineSearchJob = viewModelScope.launch(Dispatchers.Default) {
+                val filtered = current.files.filter { file ->
+                    file.name.contains(trimmed, ignoreCase = true)
+                }
+                _state.update { it.copy(inlineSearchResults = filtered, isInlineSearching = false) }
+            }
+        } else {
+            inlineSearchJob = viewModelScope.launch {
+                _state.update { it.copy(isInlineSearching = true, inlineSearchResults = emptyList()) }
+                try {
+                    val repo = repoFactory.getRepository(current.currentPath)
+                    val results = mutableListOf<FileItem>()
+                    repo.search(
+                        rootPath = current.currentPath,
+                        query = trimmed,
+                        regex = false,
+                        includeHidden = current.showHidden,
+                    ).collect { item ->
+                        results.add(item)
+                        _state.update { it.copy(inlineSearchResults = results.toList()) }
+                    }
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (_: Exception) {
+                } finally {
+                    _state.update { it.copy(isInlineSearching = false) }
+                }
+            }
+        }
+    }
     fun showProperties(item: FileItem) { _state.update { it.copy(propertiesItem = item) } }
     fun dismissProperties() { _state.update { it.copy(propertiesItem = null) } }
     fun showRename(item: FileItem) { _state.update { it.copy(renameItem = item) } }

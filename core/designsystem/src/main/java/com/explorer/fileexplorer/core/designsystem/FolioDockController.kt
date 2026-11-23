@@ -1,10 +1,19 @@
 package com.explorer.fileexplorer.core.designsystem
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
+
+data class FolioFabMenuAction(
+    val icon: ImageVector,
+    @StringRes val labelRes: Int,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
 
 data class FolioSelectionDockActions(
     val selectedCount: Int = 0,
@@ -30,58 +39,74 @@ data class FolioSelectionDockActions(
 class FolioDockController {
     private var activeOwner: String? = null
 
-    var scrollMorphState by mutableStateOf<FolioBottomBarMode?>(null)
     var showScrollToTop by mutableStateOf(false)
     var onScrollToTop by mutableStateOf<() -> Unit>({})
 
     var selectionMode by mutableStateOf(false)
     var selectionActions by mutableStateOf(FolioSelectionDockActions())
 
+    var isSubfolder by mutableStateOf(false)
+    var onNavigateUp by mutableStateOf<() -> Unit>({})
+    var onNavigateToRoot by mutableStateOf<() -> Unit>({})
+
+    var inlineSearchActive by mutableStateOf(false)
+    var inlineSearchQuery by mutableStateOf("")
+    var inlineSearchRecursive by mutableStateOf(false)
+    var onInlineSearchQueryChange by mutableStateOf<(String) -> Unit>({})
+    var onInlineSearchScopeToggle by mutableStateOf<() -> Unit>({})
+    var onInlineSearchClose by mutableStateOf<() -> Unit>({})
+    var onOpenFullSearch by mutableStateOf<() -> Unit>({})
+
     var canPaste by mutableStateOf(false)
     var onPaste by mutableStateOf<() -> Unit>({})
-
     var canCreatePrimaryAction by mutableStateOf(true)
     var onPrimaryAction by mutableStateOf<() -> Unit>({})
 
-    val resolvedMode: FolioBottomBarMode
-        get() = when {
-            selectionMode -> FolioBottomBarMode.SELECTION_ACTIONS
-            scrollMorphState != null -> scrollMorphState!!
-            else -> FolioBottomBarMode.DOCK_TABS
-        }
+    var taskBadgeCount by mutableStateOf(0)
+    var taskProgress by mutableStateOf<Float?>(null)
+    var taskHasConflict by mutableStateOf(false)
+    var onTaskPillClick by mutableStateOf<(() -> Unit)?>(null)
+
+    var onExecuteClipboardTask by mutableStateOf<((Long) -> Unit)?>(null)
+    var fabMenuItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
+    var isDockMinimizedByScroll by mutableStateOf(false)
+
+    fun onFastScrollDown() { isDockMinimizedByScroll = true }
+    fun onFastScrollUp() { isDockMinimizedByScroll = false }
+    fun resetScrollMorph() { isDockMinimizedByScroll = false }
 
     fun claimOwnership(owner: String) {
         activeOwner = owner
     }
 
-    fun onFastScrollDown() {
-        if (!selectionMode) {
-            scrollMorphState = FolioBottomBarMode.SCROLL_ACTION
-        }
-    }
-
-    fun onFastScrollUp() {
-        if (!selectionMode) {
-            scrollMorphState = FolioBottomBarMode.SCROLL_SEARCH
-        }
-    }
-
-    fun resetScrollMorph() {
-        scrollMorphState = null
-    }
-
     fun clearScreenBindings(owner: String? = null) {
         if (owner != null && activeOwner != owner) return
         activeOwner = null
-        scrollMorphState = null
         showScrollToTop = false
         onScrollToTop = {}
         selectionMode = false
         selectionActions = FolioSelectionDockActions()
         canPaste = false
         onPaste = {}
-        canCreatePrimaryAction = false
+        canCreatePrimaryAction = true
         onPrimaryAction = {}
+        isSubfolder = false
+        onNavigateUp = {}
+        onNavigateToRoot = {}
+        inlineSearchActive = false
+        inlineSearchQuery = ""
+        inlineSearchRecursive = false
+        onInlineSearchQueryChange = {}
+        onInlineSearchScopeToggle = {}
+        onInlineSearchClose = {}
+        onOpenFullSearch = {}
+        taskBadgeCount = 0
+        taskProgress = null
+        taskHasConflict = false
+        onTaskPillClick = null
+        onExecuteClipboardTask = null
+        fabMenuItems = emptyList()
+        isDockMinimizedByScroll = false
     }
 }
 

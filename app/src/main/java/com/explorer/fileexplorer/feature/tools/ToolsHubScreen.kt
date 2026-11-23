@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Label
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
@@ -53,10 +54,10 @@ import androidx.compose.ui.unit.dp
 import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.designsystem.rememberScrollVelocityConnection
-import com.explorer.fileexplorer.core.designsystem.topEdgeFeatherFade
 import kotlinx.coroutines.launch
 
 /**
@@ -78,6 +79,7 @@ fun ToolsHubScreen(
     onOpenRootModules: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenNetwork: () -> Unit = {},
 ) {
     val dockController = LocalFolioDockController.current
     val listState = rememberLazyListState()
@@ -136,25 +138,23 @@ fun ToolsHubScreen(
                 end = 16.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .topEdgeFeatherFade(opaqueStartDp = headerHeight - 8.dp, fadeHeightDp = 28.dp),
+            modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "storage_activity") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FolioSectionLabel("Activity & Storage")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.activity_storage))
                     FolioSegmentedColumn {
                         FolioSegmentedCard(index = 0, count = 4, onClick = onOpenTransfers) {
-                            ToolsRow(Icons.Rounded.SwapHoriz, stringResource(DesignSystemR.string.transfer_queue), "Active copy, move, and network jobs")
+                            ToolsRow(Icons.Rounded.SwapHoriz, stringResource(DesignSystemR.string.transfer_queue), stringResource(DesignSystemR.string.storage_activity_desc))
                         }
                         FolioSegmentedCard(index = 1, count = 4, onClick = onOpenAnalyzer) {
-                            ToolsRow(Icons.Rounded.PieChart, "Storage Analyzer", "Inspect folder sizes and large files")
+                            ToolsRow(Icons.Rounded.PieChart, stringResource(DesignSystemR.string.storage_analyzer), stringResource(DesignSystemR.string.storage_analyzer_desc))
                         }
                         FolioSegmentedCard(index = 2, count = 4, onClick = onOpenTrash) {
-                            ToolsRow(Icons.Rounded.DeleteOutline, "Trash", "Restore or empty deleted files")
+                            ToolsRow(Icons.Rounded.DeleteOutline, stringResource(DesignSystemR.string.trash), stringResource(DesignSystemR.string.trash_desc))
                         }
                         FolioSegmentedCard(index = 3, count = 4, onClick = onOpenApps) {
-                            ToolsRow(Icons.Rounded.Apps, "Apps", "Installed packages and APK export")
+                            ToolsRow(Icons.Rounded.Apps, stringResource(DesignSystemR.string.apps), stringResource(DesignSystemR.string.apps_desc))
                         }
                     }
                 }
@@ -162,16 +162,19 @@ fun ToolsHubScreen(
 
             item(key = "remote_organize") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FolioSectionLabel("Remote & Organization")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.remote_organization))
                     FolioSegmentedColumn {
-                        FolioSegmentedCard(index = 0, count = 3, onClick = onOpenCloud) {
-                            ToolsRow(Icons.Rounded.Cloud, "Cloud", "Connected cloud drives")
+                        FolioSegmentedCard(index = 0, count = 4, onClick = onOpenCloud) {
+                            ToolsRow(Icons.Rounded.Cloud, stringResource(DesignSystemR.string.cloud), stringResource(DesignSystemR.string.cloud_desc))
                         }
-                        FolioSegmentedCard(index = 1, count = 3, onClick = onOpenServer) {
-                            ToolsRow(Icons.Rounded.WifiTethering, "Share Server", "Local HTTP / FTP file sharing")
+                        FolioSegmentedCard(index = 1, count = 4, onClick = onOpenServer) {
+                            ToolsRow(Icons.Rounded.WifiTethering, stringResource(DesignSystemR.string.share_server), stringResource(DesignSystemR.string.share_server_desc))
                         }
-                        FolioSegmentedCard(index = 2, count = 3, onClick = onOpenTags) {
-                            ToolsRow(Icons.Rounded.Label, "Tags", "Manage custom file labels")
+                        FolioSegmentedCard(index = 2, count = 4, onClick = onOpenTags) {
+                            ToolsRow(Icons.Rounded.Label, stringResource(DesignSystemR.string.tags), stringResource(DesignSystemR.string.tags_desc))
+                        }
+                        FolioSegmentedCard(index = 3, count = 4, onClick = onOpenNetwork) {
+                            ToolsRow(Icons.Rounded.Lan, stringResource(DesignSystemR.string.network), stringResource(DesignSystemR.string.network_desc))
                         }
                     }
                 }
@@ -179,24 +182,30 @@ fun ToolsHubScreen(
 
             item(key = "security_system") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FolioSectionLabel("Security & System")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.security_system))
                     FolioSegmentedColumn {
                         FolioSegmentedCard(index = 0, count = 4, onClick = onOpenSecurity) {
-                            ToolsRow(Icons.Rounded.Security, stringResource(DesignSystemR.string.security), "Encrypted vault, biometric lock, integrity watch")
+                            ToolsRow(Icons.Rounded.Security, stringResource(DesignSystemR.string.security), stringResource(DesignSystemR.string.security_desc))
                         }
                         FolioSegmentedCard(index = 1, count = 4, onClick = onOpenShizuku) {
-                            ToolsRow(Icons.Rounded.AdminPanelSettings, "Shizuku", "Elevated Android/data & OBB access")
+                            ToolsRow(Icons.Rounded.AdminPanelSettings, stringResource(DesignSystemR.string.shizuku), stringResource(DesignSystemR.string.shizuku_desc))
                         }
                         FolioSegmentedCard(index = 2, count = 4, onClick = onOpenRootModules) {
-                            ToolsRow(Icons.Rounded.Extension, "Root Modules", "Magisk / KernelSU module browser")
+                            ToolsRow(Icons.Rounded.Extension, stringResource(DesignSystemR.string.root_modules), stringResource(DesignSystemR.string.root_modules_desc))
                         }
                         FolioSegmentedCard(index = 3, count = 4, onClick = onOpenSettings) {
-                            ToolsRow(Icons.Rounded.Settings, "Settings", "Theme, gestures, columns, and preferences")
+                            ToolsRow(Icons.Rounded.Settings, stringResource(DesignSystemR.string.settings), stringResource(DesignSystemR.string.settings_desc))
                         }
                     }
                 }
             }
         }
+
+        // Lightweight Scrim behind floating header
+        FolioTopScrim(
+            height = headerHeight,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
 
         // Transparent Floating Top Header
         Row(
@@ -209,7 +218,7 @@ fun ToolsHubScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Tools",
+                text = stringResource(DesignSystemR.string.tools),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,

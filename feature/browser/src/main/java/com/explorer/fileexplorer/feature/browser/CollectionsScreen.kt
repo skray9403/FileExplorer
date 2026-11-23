@@ -32,6 +32,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.model.FileItem
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.ui.FileListItem
@@ -55,6 +58,21 @@ fun CollectionsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val selected = state.selectedCategory
+    val dockController = LocalFolioDockController.current
+
+    LaunchedEffect(Unit) {
+        dockController.claimOwnership("collections")
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { dockController.clearScreenBindings("collections") }
+    }
+
+    LaunchedEffect(selected) {
+        dockController.isSubfolder = selected != null
+        dockController.onNavigateUp = { viewModel.closeCategory() }
+        dockController.onNavigateToRoot = { viewModel.closeCategory() }
+    }
 
     BackHandler(enabled = selected != null) { viewModel.closeCategory() }
 
