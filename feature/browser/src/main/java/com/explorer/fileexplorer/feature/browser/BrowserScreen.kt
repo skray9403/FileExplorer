@@ -1112,7 +1112,7 @@ private fun LocationsBottomSheet(
             }
 
             // Root Mode Toggle (when available)
-            if (state.rootState == RootState.AVAILABLE || state.rootEnabled) {
+            if (state.rootState != RootState.DENIED || state.rootEnabled) {
                 FolioSegmentedCard(index = 0, count = 1) {
                     Row(
                         modifier = Modifier
