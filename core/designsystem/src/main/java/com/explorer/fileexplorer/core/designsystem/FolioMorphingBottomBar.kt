@@ -379,12 +379,17 @@ fun FolioMorphingBottomBar(
 
             // Mode 3: Normal Resting 3-Slot Dock
             else -> {
-                Row(
+                Box(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
+                    contentAlignment = Alignment.BottomCenter,
                 ) {
-                    // Slot 1: Primary Toolbar
+                    // Slots 1 & 2: Toolbar & Task Progress Pill
+                    Row(
+                        modifier = Modifier.align(Alignment.BottomStart),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Slot 1: Primary Toolbar
                     HorizontalFloatingToolbar(
                         expanded = true,
                         modifier = Modifier.height(56.dp),
@@ -517,67 +522,70 @@ fun FolioMorphingBottomBar(
                         }
                     }
 
-                    // Slot 3: Action FAB / FAB Menu
-                    Spacer(Modifier.width(8.dp))
-                    if (controller.canPaste) {
-                        Surface(
-                            onClick = controller.onPaste,
-                            shape = CircleShape,
-                            color = colorScheme.primary,
-                            contentColor = colorScheme.onPrimary,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier.height(56.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxHeight(),
-                                verticalAlignment = Alignment.CenterVertically,
+                    // Slot 3: Action FAB / FAB Menu (Anchored to BottomEnd)
+                    Box(
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    ) {
+                        if (controller.canPaste) {
+                            Surface(
+                                onClick = controller.onPaste,
+                                shape = CircleShape,
+                                color = colorScheme.primary,
+                                contentColor = colorScheme.onPrimary,
+                                shadowElevation = 6.dp,
+                                modifier = Modifier.height(56.dp),
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ContentPaste,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = stringResource(R.string.paste_here),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    } else if (controller.fabMenuItems.isNotEmpty()) {
-                        FloatingActionButtonMenu(
-                            expanded = fabMenuExpanded,
-                            button = {
-                                ToggleFloatingActionButton(
-                                    checked = fabMenuExpanded,
-                                    onCheckedChange = { fabMenuExpanded = it },
-                                    containerSize = { 56.dp },
-                                    containerCornerRadius = { 28.dp },
+                                Row(
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .fillMaxHeight(),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    val rotation by animateFloatAsState(
-                                        targetValue = if (fabMenuExpanded) 45f else 0f,
-                                        label = "fab_rotation",
-                                    )
                                     Icon(
-                                        imageVector = Icons.Rounded.Add,
-                                        contentDescription = stringResource(if (fabMenuExpanded) R.string.close else R.string.more_options),
-                                        modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                                        imageVector = Icons.Rounded.ContentPaste,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.paste_here),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
                                     )
                                 }
-                            },
-                        ) {
-                            controller.fabMenuItems.forEach { action ->
-                                FloatingActionButtonMenuItem(
-                                    onClick = {
-                                        fabMenuExpanded = false
-                                        action.onClick()
-                                    },
-                                    text = { Text(stringResource(action.labelRes)) },
-                                    icon = { Icon(action.icon, null) },
-                                )
+                            }
+                        } else if (controller.fabMenuItems.isNotEmpty()) {
+                            FloatingActionButtonMenu(
+                                expanded = fabMenuExpanded,
+                                button = {
+                                    ToggleFloatingActionButton(
+                                        checked = fabMenuExpanded,
+                                        onCheckedChange = { fabMenuExpanded = it },
+                                        containerSize = { 56.dp },
+                                        containerCornerRadius = { 28.dp },
+                                    ) {
+                                        val rotation by animateFloatAsState(
+                                            targetValue = if (fabMenuExpanded) 45f else 0f,
+                                            label = "fab_rotation",
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Rounded.Add,
+                                            contentDescription = stringResource(if (fabMenuExpanded) R.string.close else R.string.more_options),
+                                            modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                                        )
+                                    }
+                                },
+                            ) {
+                                controller.fabMenuItems.forEach { action ->
+                                    FloatingActionButtonMenuItem(
+                                        onClick = {
+                                            fabMenuExpanded = false
+                                            action.onClick()
+                                        },
+                                        text = { Text(stringResource(action.labelRes)) },
+                                        icon = { Icon(action.icon, null) },
+                                    )
+                                }
                             }
                         }
                     }
