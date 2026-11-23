@@ -110,8 +110,12 @@ fun ToolsHubScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        dockController.claimOwnership("tools")
+    }
+
     DisposableEffect(Unit) {
-        onDispose { dockController.clearScreenBindings() }
+        onDispose { dockController.clearScreenBindings("tools") }
     }
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

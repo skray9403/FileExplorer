@@ -518,6 +518,11 @@ val scanDependencyAdvisories = tasks.register("scanDependencyAdvisories") {
 }
 
 subprojects {
+    plugins.withId("org.jetbrains.kotlin.plugin.compose") {
+        extensions.configure<org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginExtension> {
+            stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose-stability.conf"))
+        }
+    }
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn(verifyAccessibilityLocalization, verifyAndroidUpgradeReadiness, verifyDependencyProvenance)
     }

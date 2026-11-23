@@ -216,7 +216,12 @@ fun AppNavigation(
                 composable(Routes.SEARCH) {
                     SearchScreen(
                         onNavigateBack = { navController.popBackStack() },
-                        onNavigateToFolder = { navController.popBackStack() },
+                        onNavigateToFolder = { path ->
+                            navController.popBackStack()
+                            navController.navigate(Routes.browserAtPath(path)) {
+                                launchSingleTop = true
+                            }
+                        },
                     )
                 }
 
@@ -237,7 +242,12 @@ fun AppNavigation(
                         ),
                         initialUseRegex = backStackEntry.arguments?.getBoolean("useRegex") ?: false,
                         onNavigateBack = { navController.popBackStack() },
-                        onNavigateToFolder = { navController.popBackStack() },
+                        onNavigateToFolder = { path ->
+                            navController.popBackStack()
+                            navController.navigate(Routes.browserAtPath(path)) {
+                                launchSingleTop = true
+                            }
+                        },
                     )
                 }
 

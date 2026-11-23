@@ -353,8 +353,12 @@ fun BrowserScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        dockController.claimOwnership("browser")
+    }
+
     DisposableEffect(Unit) {
-        onDispose { dockController.clearScreenBindings() }
+        onDispose { dockController.clearScreenBindings("browser") }
     }
 
     BackHandler(enabled = state.selectionMode || state.insideArchive || state.currentPath != "/") {

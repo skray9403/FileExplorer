@@ -28,6 +28,8 @@ data class FolioSelectionDockActions(
  */
 @Stable
 class FolioDockController {
+    private var activeOwner: String? = null
+
     var scrollMorphState by mutableStateOf<FolioBottomBarMode?>(null)
     var showScrollToTop by mutableStateOf(false)
     var onScrollToTop by mutableStateOf<() -> Unit>({})
@@ -48,6 +50,10 @@ class FolioDockController {
             else -> FolioBottomBarMode.DOCK_TABS
         }
 
+    fun claimOwnership(owner: String) {
+        activeOwner = owner
+    }
+
     fun onFastScrollDown() {
         if (!selectionMode) {
             scrollMorphState = FolioBottomBarMode.SCROLL_ACTION
@@ -64,7 +70,9 @@ class FolioDockController {
         scrollMorphState = null
     }
 
-    fun clearScreenBindings() {
+    fun clearScreenBindings(owner: String? = null) {
+        if (owner != null && activeOwner != owner) return
+        activeOwner = null
         scrollMorphState = null
         showScrollToTop = false
         onScrollToTop = {}

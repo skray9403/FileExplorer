@@ -139,7 +139,7 @@ data class SettingsState(
     val thumbnailSize: Int = 48,
     val thumbnailCacheSizeMb: Int = ThumbnailCacheSettings.DEFAULT_SIZE_MB,
     val thumbnailCacheLocation: ThumbnailCacheLocation = ThumbnailCacheLocation.INTERNAL,
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DYNAMIC,
     val trashTtlDays: Int = LocalTrashManager.DEFAULT_TTL_DAYS,
     val compactDensity: Boolean = false,
     val showDirectorySizes: Boolean = false,

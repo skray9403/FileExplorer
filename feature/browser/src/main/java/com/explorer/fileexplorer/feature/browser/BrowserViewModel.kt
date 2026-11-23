@@ -58,6 +58,11 @@ import javax.inject.Inject
 data class BrowserTab(
     val id: Long,
     val path: String,
+    val pathHistory: List<String> = listOf(path),
+    val historyIndex: Int = 0,
+    val insideArchive: Boolean = false,
+    val archivePath: String? = null,
+    val archiveInternalPath: String = "",
 )
 
 data class PermanentDeleteConfirmation(
@@ -123,6 +128,7 @@ data class BrowserUiState(
     val secondaryDirectorySizesUnavailable: Set<String> = emptySet(),
     val secondarySelectedItems: Set<String> = emptySet(),
     val pendingDrop: PendingDrop? = null,
+    val clipboardQueue: List<QueuedClipboardTask> = emptyList(),
     val tabs: List<BrowserTab> = listOf(
         BrowserTab(1L, Environment.getExternalStorageDirectory().absolutePath),
     ),
@@ -136,7 +142,7 @@ data class BrowserUiState(
     val selectedCount: Int get() = selectedItems.size
     val canGoBack: Boolean get() = historyIndex > 0 || insideArchive
     val canGoForward: Boolean get() = historyIndex < pathHistory.lastIndex
-    val canPaste: Boolean get() = clipboard.items.isNotEmpty() && !insideArchive
+    val canPaste: Boolean get() = (clipboardQueue.isNotEmpty() || clipboard.items.isNotEmpty()) && !insideArchive
     val isRootPath: Boolean get() = currentPath.let { p ->
         listOf("/data", "/system", "/vendor", "/product", "/efs").any { p.startsWith(it) }
     }
@@ -179,6 +185,7 @@ class BrowserViewModel @Inject constructor(
     private val integrityRepository: IntegrityRepository,
     private val tagRepository: TagRepository,
     private val transferQueueManager: TransferQueueManager,
+    private val clipboardQueueRepository: com.explorer.fileexplorer.core.data.ClipboardQueueRepository,
     private val diagnosticLog: com.explorer.fileexplorer.core.data.DiagnosticLog,
     private val castMediaSender: CastMediaSender,
     private val bookmarkDao: BookmarkDao,
@@ -189,6 +196,10 @@ class BrowserViewModel @Inject constructor(
 ) : ViewModel() {
 
     private var nextTabId = 3L
+    private var primaryLoadJob: Job? = null
+    private var secondaryLoadJob: Job? = null
+    private var latestSettings: com.explorer.fileexplorer.feature.settings.SettingsState =
+        com.explorer.fileexplorer.feature.settings.SettingsState()
 
     private val _state = MutableStateFlow(BrowserUiState())
     val state: StateFlow<BrowserUiState> = _state.asStateFlow()
@@ -209,14 +220,68 @@ class BrowserViewModel @Inject constructor(
         observeTags()
         observeRootState()
         observeSettings()
+        observeClipboardQueue()
+        observeCompletedTransfers()
         initializeRoot()
         navigateTo(_state.value.currentPath)
+    }
+
+    private fun defaultDirectorySnapshot(): com.explorer.fileexplorer.core.database.DirectoryViewPreferenceSnapshot {
+        val s = latestSettings
+        return com.explorer.fileexplorer.core.database.DirectoryViewPreferenceSnapshot(
+            viewMode = ViewMode.entries.firstOrNull { it.name == s.defaultView } ?: ViewMode.LIST,
+            sortOrder = SortOrder(
+                field = SortField.entries.firstOrNull { it.name == s.sortField } ?: SortField.NAME,
+                direction = SortDirection.entries.firstOrNull { it.name == s.sortDirection } ?: SortDirection.ASCENDING,
+                foldersFirst = s.foldersFirst,
+            ),
+            visibleColumns = FileColumn.DEFAULT_VISIBLE_COLUMNS,
+        )
+    }
+
+    private suspend fun resolveDirectoryPreferences(path: String) =
+        directoryViewPreferenceDao.getByPath(path)
+            ?.let(DirectoryViewPreferenceCodec::decode)
+            ?: defaultDirectorySnapshot()
+
+    private fun observeClipboardQueue() {
+        viewModelScope.launch {
+            clipboardQueueRepository.tasks.collect { tasks ->
+                val latest = tasks.lastOrNull()
+                _state.update {
+                    it.copy(
+                        clipboardQueue = tasks,
+                        clipboard = if (latest != null && !latest.isExtract) {
+                            ClipboardContent(latest.items, latest.operation, latest.sourcePath)
+                        } else {
+                            ClipboardContent()
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun observeCompletedTransfers() {
+        viewModelScope.launch {
+            transferQueueManager.completedDestinations.collect { completedDir ->
+                val normalized = completedDir.trimEnd('/').ifBlank { "/" }
+                val current = _state.value
+                if (!current.insideArchive && current.currentPath.trimEnd('/').ifBlank { "/" } == normalized) {
+                    refresh()
+                }
+                if (current.dualPaneEnabled && current.secondaryPath.trimEnd('/').ifBlank { "/" } == normalized) {
+                    refreshSecondary()
+                }
+            }
+        }
     }
 
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.settings.collect { s ->
                 val previous = _state.value
+                latestSettings = s
                 _state.update {
                     it.copy(
                         compactDensity = s.compactDensity,
@@ -224,6 +289,10 @@ class BrowserViewModel @Inject constructor(
                         confirmDelete = s.confirmDelete,
                         swipeLeftAction = s.swipeLeftAction,
                         swipeRightAction = s.swipeRightAction,
+                        showHidden = s.showHidden,
+                        sortOrder = it.sortOrder.copy(foldersFirst = s.foldersFirst),
+                        files = sortFiles(it.files, it.sortOrder.copy(foldersFirst = s.foldersFirst), s.showHidden),
+                        secondaryFiles = sortFiles(it.secondaryFiles, it.sortOrder.copy(foldersFirst = s.foldersFirst), s.showHidden),
                     )
                 }
                 val current = _state.value
@@ -380,6 +449,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun navigateTo(path: String) {
+        primaryLoadJob?.cancel()
         directorySizeJob?.cancel()
         _state.update {
             it.copy(
@@ -388,8 +458,8 @@ class BrowserViewModel @Inject constructor(
                 directorySizesUnavailable = emptySet(),
             )
         }
-        viewModelScope.launch {
-            val preferences = DirectoryViewPreferenceCodec.decode(directoryViewPreferenceDao.getByPath(path))
+        primaryLoadJob = viewModelScope.launch {
+            val preferences = resolveDirectoryPreferences(path)
             _state.update {
                 it.copy(
                     isLoading = true,
@@ -398,7 +468,7 @@ class BrowserViewModel @Inject constructor(
                     sortOrder = preferences.sortOrder,
                     viewMode = preferences.viewMode,
                     visibleColumns = preferences.visibleColumns,
-                    tabs = updateTabPath(it.tabs, it.selectedTabIndex, path),
+                    tabs = updateTabState(it.tabs, it.selectedTabIndex, path, false, null, ""),
                 )
             }
             val repo = repoFactory.getRepository(path)
@@ -419,7 +489,8 @@ class BrowserViewModel @Inject constructor(
                         it.copy(currentPath = path, files = sorted, isLoading = false,
                             pathHistory = history, historyIndex = history.lastIndex,
                             insideArchive = false, archivePath = null, archiveInternalPath = "",
-                            selinuxContext = selinux)
+                            selinuxContext = selinux,
+                            tabs = updateTabState(it.tabs, it.selectedTabIndex, path, false, null, "", history, history.lastIndex))
                     }
                     recordRecentLocation(path)
                     scheduleDirectorySizes(path, sorted, repo, secondary = false)
@@ -466,6 +537,7 @@ class BrowserViewModel @Inject constructor(
 
     fun navigateSecondaryTo(path: String) {
         if (!_state.value.dualPaneEnabled) return
+        secondaryLoadJob?.cancel()
         secondaryDirectorySizeJob?.cancel()
         _state.update {
             it.copy(
@@ -474,16 +546,20 @@ class BrowserViewModel @Inject constructor(
                 secondaryDirectorySizesUnavailable = emptySet(),
             )
         }
-        viewModelScope.launch {
+        secondaryLoadJob = viewModelScope.launch {
+            val preferences = resolveDirectoryPreferences(path)
             _state.update {
                 it.copy(
                     secondaryIsLoading = true,
                     secondaryError = null,
                     secondarySelectedItems = emptySet(),
-                    secondaryTabs = updateTabPath(
+                    secondaryTabs = updateTabState(
                         it.secondaryTabs,
                         it.secondarySelectedTabIndex,
                         path,
+                        false,
+                        null,
+                        "",
                     ),
                 )
             }
@@ -493,7 +569,7 @@ class BrowserViewModel @Inject constructor(
                 diagnosticLog.logCapabilities(capabilityMatrix)
                 _state.update { it.copy(secondaryCapabilityMatrix = capabilityMatrix) }
                 repository.listFiles(path).collect { files ->
-                    val sorted = sortFiles(files, _state.value.sortOrder, _state.value.showHidden)
+                    val sorted = sortFiles(files, preferences.sortOrder, _state.value.showHidden)
                     _state.update {
                         it.copy(
                             secondaryPath = path,
@@ -531,10 +607,14 @@ class BrowserViewModel @Inject constructor(
     fun openTab(pane: BrowserPane) {
         val state = _state.value
         val path = if (pane == BrowserPane.PRIMARY) state.currentPath else state.secondaryPath
-        val tab = BrowserTab(nextTabId++, path)
+        openTabAt(pane, path)
+    }
+
+    fun openTabAt(pane: BrowserPane, targetPath: String) {
+        val tab = BrowserTab(nextTabId++, targetPath)
         if (pane == BrowserPane.PRIMARY) {
             _state.update { it.copy(tabs = it.tabs + tab, selectedTabIndex = it.tabs.size) }
-            navigateTo(path)
+            navigateTo(targetPath)
         } else {
             _state.update {
                 it.copy(
@@ -542,7 +622,7 @@ class BrowserViewModel @Inject constructor(
                     secondarySelectedTabIndex = it.secondaryTabs.size,
                 )
             }
-            navigateSecondaryTo(path)
+            navigateSecondaryTo(targetPath)
         }
     }
 
@@ -551,12 +631,29 @@ class BrowserViewModel @Inject constructor(
         if (pane == BrowserPane.PRIMARY) {
             val tab = state.tabs.getOrNull(index) ?: return
             if (index == state.selectedTabIndex) return
-            _state.update { it.copy(selectedTabIndex = index) }
-            navigateTo(tab.path)
+            _state.update {
+                it.copy(
+                    selectedTabIndex = index,
+                    pathHistory = tab.pathHistory,
+                    historyIndex = tab.historyIndex,
+                    insideArchive = tab.insideArchive,
+                    archivePath = tab.archivePath,
+                    archiveInternalPath = tab.archiveInternalPath,
+                )
+            }
+            if (tab.insideArchive && tab.archivePath != null) {
+                navigateInsideArchive(tab.archivePath, tab.archiveInternalPath)
+            } else {
+                navigateTo(tab.path)
+            }
         } else {
             val tab = state.secondaryTabs.getOrNull(index) ?: return
             if (index == state.secondarySelectedTabIndex) return
-            _state.update { it.copy(secondarySelectedTabIndex = index) }
+            _state.update {
+                it.copy(
+                    secondarySelectedTabIndex = index,
+                )
+            }
             navigateSecondaryTo(tab.path)
         }
     }
@@ -727,6 +824,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun loadPath(path: String, historyIndex: Int) {
+        primaryLoadJob?.cancel()
         directorySizeJob?.cancel()
         _state.update {
             it.copy(
@@ -735,8 +833,8 @@ class BrowserViewModel @Inject constructor(
                 directorySizesUnavailable = emptySet(),
             )
         }
-        viewModelScope.launch {
-            val preferences = DirectoryViewPreferenceCodec.decode(directoryViewPreferenceDao.getByPath(path))
+        primaryLoadJob = viewModelScope.launch {
+            val preferences = resolveDirectoryPreferences(path)
             _state.update { it.copy(isLoading = true, selectedItems = emptySet()) }
             val repository = repoFactory.getRepository(path)
             val capabilityMatrix = repository.capabilityMatrix(path)
@@ -754,6 +852,7 @@ class BrowserViewModel @Inject constructor(
                             visibleColumns = preferences.visibleColumns,
                             isLoading = false,
                             historyIndex = historyIndex,
+                            tabs = updateTabState(it.tabs, it.selectedTabIndex, path, false, null, "", it.pathHistory, historyIndex),
                         )
                     }
                     recordRecentLocation(path)
@@ -768,8 +867,9 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun navigateInsideArchive(archivePath: String, internalPath: String) {
+        primaryLoadJob?.cancel()
         directorySizeJob?.cancel()
-        viewModelScope.launch {
+        primaryLoadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
                 val entries = archiveHelper.listArchive(archivePath, internalPath)
@@ -781,7 +881,8 @@ class BrowserViewModel @Inject constructor(
                     capabilityMatrix = capabilityMatrix,
                     directorySizes = emptyMap(),
                     directorySizesLoading = emptySet(),
-                    directorySizesUnavailable = emptySet()) }
+                    directorySizesUnavailable = emptySet(),
+                    tabs = updateTabState(it.tabs, it.selectedTabIndex, "$archivePath/$internalPath".trimEnd('/'), true, archivePath, internalPath, it.pathHistory, it.historyIndex)) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = "Archive error: ${e.message}") }
             }
@@ -846,42 +947,6 @@ class BrowserViewModel @Inject constructor(
         val item = _state.value.deleteConfirmationItem ?: return
         _state.update { it.copy(deleteConfirmationItem = null, selectedItems = setOf(item.path)) }
         deleteSelected()
-    }
-
-    fun extractArchive(archivePath: String? = null, destination: String? = null) {
-        val archive = archivePath ?: _state.value.archivePath ?: return
-        val dest = destination ?: _state.value.currentPath
-        viewModelScope.launch {
-            val matrix = repoFactory.getRepository(archive).capabilityMatrix(archive)
-            diagnosticLog.logCapabilities(matrix)
-            if (!matrix.isActionEnabled(RepositoryFeature.ARCHIVE_EXTRACTION)) {
-                _events.emit(BrowserEvent.Toast(matrix.explanation(RepositoryFeature.ARCHIVE_EXTRACTION)))
-                return@launch
-            }
-            _events.emit(BrowserEvent.Toast("Extracting..."))
-            archiveHelper.extract(archive, dest)
-                .onSuccess { count -> _events.emit(BrowserEvent.Toast("Extracted $count items")) }
-                .onFailure { e -> _events.emit(BrowserEvent.Toast("Extract failed: ${e.message}")) }
-            if (!_state.value.insideArchive) refresh()
-        }
-    }
-
-    fun compressSelected(outputName: String, format: ArchiveFormat = ArchiveFormat.ZIP, password: CharArray? = null) {
-        val items = getSelectedFileItems()
-        if (items.isEmpty()) return
-        val outputPath = "${_state.value.currentPath}/$outputName.${format.extension}"
-        viewModelScope.launch {
-            val matrix = repoFactory.getRepository(outputPath).capabilityMatrix(outputPath)
-            diagnosticLog.logCapabilities(matrix)
-            if (!matrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION)) {
-                _events.emit(BrowserEvent.Toast(matrix.explanation(RepositoryFeature.ARCHIVE_CREATION)))
-                return@launch
-            }
-            _events.emit(BrowserEvent.Toast("Compressing..."))
-            archiveHelper.createArchive(outputPath, items.map { it.path }, format, password)
-                .onSuccess { _events.emit(BrowserEvent.Toast("Archive created")); clearSelection(); refresh() }
-                .onFailure { e -> _events.emit(BrowserEvent.Toast("Compress failed: ${e.message}")) }
-        }
     }
 
     fun watchSelectedIntegrity() {
@@ -970,31 +1035,122 @@ class BrowserViewModel @Inject constructor(
 
     fun copySelected() {
         val items = getSelectedFileItems()
-        if (!canUseOperation(RepositoryOperation.COPY)) return
-        _state.update { it.copy(clipboard = ClipboardContent(items, FileOperation.COPY, it.currentPath), selectedItems = emptySet()) }
-        viewModelScope.launch { _events.emit(BrowserEvent.Toast("${items.size} items copied")) }
+        if (items.isEmpty() || !canUseOperation(RepositoryOperation.COPY)) return
+        clipboardQueueRepository.enqueue(FileOperation.COPY, items, _state.value.currentPath)
+        _state.update { it.copy(selectedItems = emptySet()) }
+        viewModelScope.launch { _events.emit(BrowserEvent.Toast("${items.size} item(s) added to action queue")) }
     }
 
     fun cutSelected() {
         val items = getSelectedFileItems()
-        if (!canUseOperation(RepositoryOperation.MOVE)) return
-        _state.update { it.copy(clipboard = ClipboardContent(items, FileOperation.MOVE, it.currentPath), selectedItems = emptySet()) }
-        viewModelScope.launch { _events.emit(BrowserEvent.Toast("${items.size} items cut")) }
+        if (items.isEmpty() || !canUseOperation(RepositoryOperation.MOVE)) return
+        clipboardQueueRepository.enqueue(FileOperation.MOVE, items, _state.value.currentPath)
+        _state.update { it.copy(selectedItems = emptySet()) }
+        viewModelScope.launch { _events.emit(BrowserEvent.Toast("${items.size} item(s) queued to move")) }
     }
 
-    fun paste() {
-        val cb = _state.value.clipboard; if (cb.isEmpty) return
-        val operation = if (cb.isCut) RepositoryOperation.MOVE else RepositoryOperation.COPY
-        if (!canUseOperation(operation, _state.value.currentPath)) return
-        transferQueueManager.enqueue(
-            operation = if (cb.isCut) FileOperation.MOVE else FileOperation.COPY,
-            sourcePaths = cb.items.map { it.path },
-            destination = _state.value.currentPath,
-        )
-        _state.update { it.copy(clipboard = ClipboardContent()) }
-        viewModelScope.launch {
-            _events.emit(BrowserEvent.Toast("${cb.items.size} item(s) queued for ${if (cb.isCut) "move" else "copy"}"))
+    fun queueExtractSelected() {
+        val current = _state.value
+        if (current.insideArchive) {
+            val archive = current.archivePath ?: return
+            val entries = current.selectedItems.toList().takeIf { it.isNotEmpty() }
+            clipboardQueueRepository.enqueue(
+                operation = FileOperation.EXTRACT,
+                items = getSelectedFileItems(),
+                sourcePath = current.currentPath,
+                archivePath = archive,
+                archiveEntries = entries,
+            )
+            clearSelection()
+            viewModelScope.launch { _events.emit(BrowserEvent.Toast("Extract queued; open destination folder to run")) }
+            return
         }
+        val archives = getSelectedFileItems().filter { it.isArchive && archiveHelper.isArchive(it.path) }
+        if (archives.isEmpty()) return
+        archives.forEach { archive ->
+            clipboardQueueRepository.enqueue(
+                operation = FileOperation.EXTRACT,
+                items = listOf(archive),
+                sourcePath = current.currentPath,
+                archivePath = archive.path,
+            )
+        }
+        clearSelection()
+        viewModelScope.launch { _events.emit(BrowserEvent.Toast("${archives.size} archive(s) queued for extraction")) }
+    }
+
+    fun executeClipboardTask(taskId: Long) {
+        val destination = _state.value.currentPath
+        if (_state.value.insideArchive) return
+        val task = clipboardQueueRepository.tasks.value.firstOrNull { it.id == taskId } ?: return
+        when (task.operation) {
+            FileOperation.EXTRACT -> {
+                val archive = task.archivePath ?: task.items.firstOrNull()?.path ?: return
+                if (!canUseFeature(RepositoryFeature.ARCHIVE_EXTRACTION, archive)) return
+                clipboardQueueRepository.remove(taskId)
+                transferQueueManager.enqueueExtract(
+                    archivePath = archive,
+                    destination = destination,
+                    entriesToExtract = task.archiveEntries,
+                )
+                viewModelScope.launch { _events.emit(BrowserEvent.Toast("Extraction queued")) }
+            }
+            FileOperation.MOVE, FileOperation.COPY -> {
+                val op = if (task.isCut) RepositoryOperation.MOVE else RepositoryOperation.COPY
+                if (!canUseOperation(op, destination)) return
+                clipboardQueueRepository.remove(taskId)
+                transferQueueManager.enqueue(
+                    operation = task.operation,
+                    sourcePaths = task.items.map { it.path },
+                    destination = destination,
+                )
+                viewModelScope.launch {
+                    _events.emit(BrowserEvent.Toast("${task.items.size} item(s) queued for ${if (task.isCut) "move" else "copy"}"))
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    fun dismissClipboardTask(taskId: Long) = clipboardQueueRepository.remove(taskId)
+    fun clearClipboardQueue() = clipboardQueueRepository.clear()
+
+    fun paste() {
+        val latest = clipboardQueueRepository.tasks.value.lastOrNull() ?: return
+        executeClipboardTask(latest.id)
+    }
+
+    fun extractArchive(archivePath: String? = null, destination: String? = null) {
+        val archive = archivePath ?: _state.value.archivePath ?: return
+        val dest = destination ?: if (_state.value.insideArchive) {
+            archive.substringBeforeLast('/')
+        } else {
+            _state.value.currentPath
+        }
+        if (!canUseFeature(RepositoryFeature.ARCHIVE_EXTRACTION, archive)) return
+        transferQueueManager.enqueueExtract(archivePath = archive, destination = dest)
+        viewModelScope.launch { _events.emit(BrowserEvent.Toast("Extraction queued")) }
+    }
+
+    fun compressSelected(outputName: String, format: ArchiveFormat = ArchiveFormat.ZIP, password: CharArray? = null) {
+        val items = getSelectedFileItems()
+        if (items.isEmpty()) {
+            password?.fill('\u0000')
+            return
+        }
+        val outputPath = "${_state.value.currentPath}/$outputName.${format.extension}"
+        if (!canUseFeature(RepositoryFeature.ARCHIVE_CREATION, outputPath)) {
+            password?.fill('\u0000')
+            return
+        }
+        transferQueueManager.enqueueCompress(
+            sourcePaths = items.map { it.path },
+            outputPath = outputPath,
+            format = format,
+            password = password,
+        )
+        clearSelection()
+        viewModelScope.launch { _events.emit(BrowserEvent.Toast("Compression queued")) }
     }
 
     fun deleteSelected() {
@@ -1455,6 +1611,28 @@ class BrowserViewModel @Inject constructor(
     private fun updateTabPath(tabs: List<BrowserTab>, selectedIndex: Int, path: String): List<BrowserTab> {
         val tab = tabs.getOrNull(selectedIndex) ?: return tabs
         return tabs.toMutableList().apply { set(selectedIndex, tab.copy(path = path)) }
+    }
+
+    private fun updateTabState(
+        tabs: List<BrowserTab>,
+        selectedIndex: Int,
+        path: String,
+        insideArchive: Boolean = false,
+        archivePath: String? = null,
+        archiveInternalPath: String = "",
+        pathHistory: List<String>? = null,
+        historyIndex: Int? = null,
+    ): List<BrowserTab> {
+        val tab = tabs.getOrNull(selectedIndex) ?: return tabs
+        val updated = tab.copy(
+            path = path,
+            insideArchive = insideArchive,
+            archivePath = archivePath,
+            archiveInternalPath = archiveInternalPath,
+            pathHistory = pathHistory ?: tab.pathHistory,
+            historyIndex = historyIndex ?: tab.historyIndex,
+        )
+        return tabs.toMutableList().apply { set(selectedIndex, updated) }
     }
 
 

@@ -121,7 +121,9 @@ class ShizukuManager @Inject constructor(
             return@withContext ShizukuCommandResult(1, "Shizuku permission is not ready")
         }
         try {
-            val response = service().execute(command)
+            val response = withTimeout(EXECUTE_TIMEOUT_MS) {
+                service().execute(command)
+            }
             val separator = response.indexOf('\n')
             if (separator <= 0) {
                 ShizukuCommandResult(1, response)
@@ -131,7 +133,14 @@ class ShizukuManager @Inject constructor(
                     response.substring(separator + 1),
                 )
             }
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            synchronized(lock) { remoteService = null }
+            refresh()
+            ShizukuCommandResult(124, "Shizuku command timed out")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
+            synchronized(lock) { remoteService = null }
             refresh()
             ShizukuCommandResult(1, error.message ?: "Shizuku command failed")
         }
@@ -157,7 +166,14 @@ class ShizukuManager @Inject constructor(
                 deferred.completeExceptionally(error)
             }
         }
-        return withTimeout(BIND_TIMEOUT_MS) { deferred.await() }
+        return try {
+            withTimeout(BIND_TIMEOUT_MS) { deferred.await() }
+        } catch (error: Throwable) {
+            synchronized(lock) {
+                if (binding === deferred) binding = null
+            }
+            throw error
+        }
     }
 
     companion object {
@@ -165,5 +181,6 @@ class ShizukuManager @Inject constructor(
         private const val USER_SERVICE_VERSION = 1
         private const val USER_SERVICE_TAG = "file-explorer-shizuku-files"
         private const val BIND_TIMEOUT_MS = 10_000L
+        private const val EXECUTE_TIMEOUT_MS = 15_000L
     }
 }
