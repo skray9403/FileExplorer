@@ -163,7 +163,7 @@ import com.explorer.fileexplorer.core.model.RepositoryOperation
 import com.explorer.fileexplorer.core.model.SortDirection
 import com.explorer.fileexplorer.core.model.SortField
 import com.explorer.fileexplorer.core.model.SortOrder
-import com.explorer.fileexplorer.core.model.SwipeAction
+import com.explorer.fileexplorer.feature.settings.SwipeAction
 import com.explorer.fileexplorer.core.model.ViewMode
 import com.explorer.fileexplorer.core.storage.RootState
 import com.explorer.fileexplorer.core.ui.BreadcrumbBar
