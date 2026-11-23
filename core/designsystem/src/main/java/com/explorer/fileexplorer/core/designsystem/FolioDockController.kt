@@ -39,6 +39,9 @@ data class FolioSelectionDockActions(
 class FolioDockController {
     private var activeOwner: String? = null
 
+    // Changing this key auto-collapses transient dock overlays (like the FAB menu)
+    var contextResetKey by mutableStateOf("")
+
     var showScrollToTop by mutableStateOf(false)
     var onScrollToTop by mutableStateOf<() -> Unit>({})
 
@@ -52,6 +55,7 @@ class FolioDockController {
     var inlineSearchActive by mutableStateOf(false)
     var inlineSearchQuery by mutableStateOf("")
     var inlineSearchRecursive by mutableStateOf(false)
+    var onInlineSearchOpen by mutableStateOf<(() -> Unit)?>(null)
     var onInlineSearchQueryChange by mutableStateOf<(String) -> Unit>({})
     var onInlineSearchScopeToggle by mutableStateOf<() -> Unit>({})
     var onInlineSearchClose by mutableStateOf<() -> Unit>({})
@@ -62,6 +66,7 @@ class FolioDockController {
     var canCreatePrimaryAction by mutableStateOf(true)
     var onPrimaryAction by mutableStateOf<() -> Unit>({})
 
+    // AppNavigation-owned global task state (never wiped by screen teardown)
     var taskBadgeCount by mutableStateOf(0)
     var taskProgress by mutableStateOf<Float?>(null)
     var taskHasConflict by mutableStateOf(false)
@@ -96,14 +101,11 @@ class FolioDockController {
         inlineSearchActive = false
         inlineSearchQuery = ""
         inlineSearchRecursive = false
+        onInlineSearchOpen = null
         onInlineSearchQueryChange = {}
         onInlineSearchScopeToggle = {}
         onInlineSearchClose = {}
         onOpenFullSearch = {}
-        taskBadgeCount = 0
-        taskProgress = null
-        taskHasConflict = false
-        onTaskPillClick = null
         onExecuteClipboardTask = null
         fabMenuItems = emptyList()
         isDockMinimizedByScroll = false

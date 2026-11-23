@@ -123,7 +123,6 @@ fun AppNavigation(
 
     CompositionLocalProvider(LocalFolioDockController provides dockController) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Full-bleed NavHost — content scrolls seamlessly underneath the floating dock
             NavHost(
                 navController = navController,
                 startDestination = Routes.BROWSER,
@@ -185,7 +184,8 @@ fun AppNavigation(
                 ) { backStackEntry ->
                     BrowserScreen(
                         initialPath = java.net.URLDecoder.decode(
-                            backStackEntry.arguments?.getString("path") ?: "", "UTF-8",
+                            backStackEntry.arguments?.getString("path") ?: "",
+                            "UTF-8",
                         ),
                         onOpenSearch = { navController.navigate(Routes.SEARCH) },
                         onOpenSavedSearch = { search ->
@@ -249,10 +249,12 @@ fun AppNavigation(
                 ) { backStackEntry ->
                     SearchScreen(
                         currentPath = java.net.URLDecoder.decode(
-                            backStackEntry.arguments?.getString("scopePath") ?: "", "UTF-8",
+                            backStackEntry.arguments?.getString("scopePath") ?: "",
+                            "UTF-8",
                         ),
                         initialQuery = java.net.URLDecoder.decode(
-                            backStackEntry.arguments?.getString("query") ?: "", "UTF-8",
+                            backStackEntry.arguments?.getString("query") ?: "",
+                            "UTF-8",
                         ),
                         initialUseRegex = backStackEntry.arguments?.getBoolean("useRegex") ?: false,
                         onNavigateBack = { navController.popBackStack() },
@@ -266,7 +268,12 @@ fun AppNavigation(
                 }
 
                 composable(Routes.TAGS) { TagsScreen(onNavigateBack = { navController.popBackStack() }) }
-                composable(Routes.COLLECTIONS) { CollectionsScreen(onNavigateBack = { navController.popBackStack() }) }
+                composable(Routes.COLLECTIONS) {
+                    CollectionsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                    )
+                }
                 composable(Routes.SETTINGS) { SettingsScreen(onNavigateBack = { navController.popBackStack() }) }
                 composable(Routes.NETWORK) { NetworkScreen(onNavigateBack = { navController.popBackStack() }) }
                 composable(Routes.SHIZUKU) {
@@ -289,7 +296,8 @@ fun AppNavigation(
                     arguments = listOf(navArgument("filePath") { type = NavType.StringType }),
                 ) { backStackEntry ->
                     val filePath = java.net.URLDecoder.decode(
-                        backStackEntry.arguments?.getString("filePath") ?: "", "UTF-8",
+                        backStackEntry.arguments?.getString("filePath") ?: "",
+                        "UTF-8",
                     )
                     EditorScreen(filePath = filePath, onNavigateBack = { navController.popBackStack() })
                 }
@@ -299,7 +307,8 @@ fun AppNavigation(
                     arguments = listOf(navArgument("filePath") { type = NavType.StringType }),
                 ) { backStackEntry ->
                     val filePath = java.net.URLDecoder.decode(
-                        backStackEntry.arguments?.getString("filePath") ?: "", "UTF-8",
+                        backStackEntry.arguments?.getString("filePath") ?: "",
+                        "UTF-8",
                     )
                     HexEditorScreen(filePath = filePath, onNavigateBack = { navController.popBackStack() })
                 }
@@ -309,13 +318,13 @@ fun AppNavigation(
                     arguments = listOf(navArgument("filePath") { type = NavType.StringType }),
                 ) { backStackEntry ->
                     val filePath = java.net.URLDecoder.decode(
-                        backStackEntry.arguments?.getString("filePath") ?: "", "UTF-8",
+                        backStackEntry.arguments?.getString("filePath") ?: "",
+                        "UTF-8",
                     )
                     DocumentPreviewScreen(filePath = filePath, onNavigateBack = { navController.popBackStack() })
                 }
             }
 
-            // Truly Floating Hoisted Morphing Bottom Dock
             AnimatedVisibility(
                 visible = selectedDestination != null,
                 enter = slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(180)),

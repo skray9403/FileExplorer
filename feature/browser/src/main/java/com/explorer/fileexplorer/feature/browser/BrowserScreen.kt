@@ -7,16 +7,23 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
-import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -37,6 +44,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -57,6 +65,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -78,7 +87,6 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.SavedSearch
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
@@ -115,6 +123,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -122,27 +131,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.mediarouter.app.MediaRouteButton
 import com.explorer.fileexplorer.core.data.ArchiveFormat
 import com.explorer.fileexplorer.core.data.SecureDeleteCapability
-import com.explorer.fileexplorer.core.database.RecentLocationEntity
 import com.explorer.fileexplorer.core.database.SavedSearchEntity
 import com.explorer.fileexplorer.core.database.TagEntity
 import com.explorer.fileexplorer.core.designsystem.AccentOrange
@@ -154,8 +166,6 @@ import com.explorer.fileexplorer.core.designsystem.FolioSelectionDockActions
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
-import com.explorer.fileexplorer.core.designsystem.rememberScrollVelocityConnection
-import kotlinx.coroutines.CancellationException
 import com.explorer.fileexplorer.core.model.FileColumn
 import com.explorer.fileexplorer.core.model.FileItem
 import com.explorer.fileexplorer.core.model.RepositoryFeature
@@ -163,15 +173,14 @@ import com.explorer.fileexplorer.core.model.RepositoryOperation
 import com.explorer.fileexplorer.core.model.SortDirection
 import com.explorer.fileexplorer.core.model.SortField
 import com.explorer.fileexplorer.core.model.SortOrder
-import com.explorer.fileexplorer.feature.settings.SwipeAction
 import com.explorer.fileexplorer.core.model.ViewMode
 import com.explorer.fileexplorer.core.storage.RootState
-import com.explorer.fileexplorer.core.ui.BreadcrumbBar
 import com.explorer.fileexplorer.core.ui.FileGridItem
 import com.explorer.fileexplorer.core.ui.FileListItem
 import com.explorer.fileexplorer.feature.security.SecurityEntryPoint
-import com.google.android.gms.cast.framework.CastButtonFactory
+import com.explorer.fileexplorer.feature.settings.SwipeAction
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -204,6 +213,7 @@ fun BrowserScreen(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val dockController = LocalFolioDockController.current
+    val haptic = LocalHapticFeedback.current
 
     val securityEntryPoint = remember(context) {
         EntryPointAccessors.fromApplication(
@@ -216,11 +226,22 @@ fun BrowserScreen(
     var showSelectionMoreSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showTabsSheet by remember { mutableStateOf(false) }
+    var breadcrumbExpanded by remember { mutableStateOf(false) }
+    var backPreviewProgress by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(state.currentPath, state.selectionMode) {
+        breadcrumbExpanded = false
+    }
 
     val clipboardManager = LocalClipboardManager.current
     val onCopyCurrentPath = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         clipboardManager.setText(AnnotatedString(state.currentPath))
-        Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.path_copied), Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            context.applicationContext.getString(DesignSystemR.string.path_copied),
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     val listState = rememberLazyListState()
@@ -307,7 +328,6 @@ fun BrowserScreen(
         }
     }
 
-    // Bind scroll velocity, scroll-to-top, clipboard paste, and selection morph to the hoisted dock
     val scrollToTopThresholdPx = with(density) { 160.dp.toPx() }
     val showScrollToTop by remember(state.viewMode, listState, gridState, scrollToTopThresholdPx) {
         derivedStateOf {
@@ -319,13 +339,9 @@ fun BrowserScreen(
         }
     }
 
-    val scrollVelocityConnection = rememberScrollVelocityConnection(
-        velocityThresholdDpPerSec = 600f,
-        onFastScrollDown = { dockController.onFastScrollDown() },
-        onFastScrollUp = { dockController.onFastScrollUp() },
-    )
-
     LaunchedEffect(
+        state.currentPath,
+        state.selectedTabIndex,
         state.selectionMode,
         state.selectedCount,
         state.insideArchive,
@@ -338,6 +354,8 @@ fun BrowserScreen(
         state.inlineSearchQuery,
         state.inlineSearchRecursive,
     ) {
+        dockController.claimOwnership("browser")
+        dockController.contextResetKey = "${state.currentPath}|${state.selectedTabIndex}|${state.selectionMode}"
         dockController.selectionMode = state.selectionMode
         dockController.selectionActions = FolioSelectionDockActions(
             selectedCount = state.selectedCount,
@@ -356,6 +374,7 @@ fun BrowserScreen(
         )
         dockController.canPaste = state.canPaste
         dockController.onPaste = viewModel::paste
+        dockController.onExecuteClipboardTask = if (state.insideArchive) null else viewModel::executeClipboardTask
         dockController.canCreatePrimaryAction = !state.insideArchive &&
             state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY)
         dockController.onPrimaryAction = viewModel::showNewFolderDialog
@@ -369,7 +388,7 @@ fun BrowserScreen(
                 }
             }
         }
-        dockController.isSubfolder = !state.isAtVolumeRoot
+        dockController.isSubfolder = !state.isAtVolumeRoot || state.insideArchive
         dockController.onNavigateUp = viewModel::navigateUp
         dockController.onNavigateToRoot = {
             state.volumes.firstOrNull()?.path?.let(viewModel::navigateTo)
@@ -378,6 +397,7 @@ fun BrowserScreen(
         dockController.inlineSearchActive = state.inlineSearchActive
         dockController.inlineSearchQuery = state.inlineSearchQuery
         dockController.inlineSearchRecursive = state.inlineSearchRecursive
+        dockController.onInlineSearchOpen = { viewModel.setInlineSearchActive(true) }
         dockController.onInlineSearchQueryChange = viewModel::setInlineSearchQuery
         dockController.onInlineSearchScopeToggle = viewModel::toggleInlineSearchScope
         dockController.onInlineSearchClose = viewModel::closeInlineSearch
@@ -409,53 +429,60 @@ fun BrowserScreen(
         )
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-        if (state.viewMode != ViewMode.GRID && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 15) {
-            dockController.resetScrollMorph()
-        }
-    }
-
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
-        if (state.viewMode == ViewMode.GRID && gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < 15) {
-            dockController.resetScrollMorph()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        dockController.claimOwnership("browser")
-    }
-
     DisposableEffect(Unit) {
         onDispose { dockController.clearScreenBindings("browser") }
     }
 
-    PredictiveBackHandler(enabled = state.selectionMode || state.insideArchive || !state.isAtVolumeRoot) { progress ->
+    val backEnabled = breadcrumbExpanded || state.inlineSearchActive || state.selectionMode || state.insideArchive || !state.isAtVolumeRoot
+    PredictiveBackHandler(enabled = backEnabled) { progress ->
+        val isFolderBack = !breadcrumbExpanded && !state.inlineSearchActive && !state.selectionMode
         try {
-            progress.collect { }
+            progress.collect { event ->
+                if (isFolderBack) backPreviewProgress = event.progress
+            }
+            backPreviewProgress = 0f
             when {
+                breadcrumbExpanded -> breadcrumbExpanded = false
+                state.inlineSearchActive -> viewModel.closeInlineSearch()
                 state.selectionMode -> viewModel.clearSelection()
                 else -> viewModel.navigateUp()
             }
         } catch (_: CancellationException) {
+            backPreviewProgress = 0f
         }
     }
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topHeaderHeight = statusBarTop + 60.dp
-    val activeLocationTitle = remember(state.currentPath, state.volumes) {
-        state.volumes.firstOrNull { state.currentPath.startsWith(it.path) }?.name
-            ?: state.currentPath.trimEnd('/').substringAfterLast('/').ifBlank { "Storage" }
+    val hasPinnedTabs = state.tabs.size > 1 && !state.dualPaneEnabled
+    val topHeaderHeight = statusBarTop + 60.dp + if (hasPinnedTabs) 44.dp else 0.dp
+    val storageFallback = stringResource(DesignSystemR.string.storage)
+    val activeFolderTitle = remember(state.currentPath, state.volumes, state.isAtVolumeRoot, storageFallback) {
+        val cleaned = state.currentPath.trimEnd('/')
+        if (state.isAtVolumeRoot) {
+            state.volumes.firstOrNull { it.path.trimEnd('/') == cleaned }?.name
+                ?: cleaned.substringAfterLast('/').ifBlank { storageFallback }
+        } else {
+            cleaned.substringAfterLast('/').ifBlank { storageFallback }
+        }
     }
+
+    val overscrollThresholdPx = with(density) { 88.dp.toPx() }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(scrollVelocityConnection),
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        // Full-bleed browser content underneath floating bars
         BoxWithConstraints(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = backPreviewProgress.coerceIn(0f, 1f)
+                    val scale = 1f - (0.04f * p)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = 24.dp.toPx() * p
+                },
         ) {
             if (!state.dualPaneEnabled && LargeScreenLayoutPolicy.useThreePane(maxWidth.value.toInt())) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = topHeaderHeight, bottom = 96.dp)) {
@@ -509,21 +536,66 @@ fun BrowserScreen(
                     pageCount = { state.tabs.size },
                 )
 
-                LaunchedEffect(pagerState.currentPage) {
-                    if (pagerState.currentPage != state.selectedTabIndex && pagerState.currentPage in state.tabs.indices) {
-                        viewModel.selectTab(BrowserPane.PRIMARY, pagerState.currentPage)
+                LaunchedEffect(pagerState.settledPage) {
+                    if (pagerState.settledPage != state.selectedTabIndex && pagerState.settledPage in state.tabs.indices) {
+                        viewModel.selectTab(BrowserPane.PRIMARY, pagerState.settledPage)
                     }
                 }
 
-                LaunchedEffect(state.selectedTabIndex) {
-                    if (pagerState.currentPage != state.selectedTabIndex && state.selectedTabIndex in state.tabs.indices) {
-                        pagerState.animateScrollToPage(state.selectedTabIndex)
+                LaunchedEffect(state.selectedTabIndex, state.tabs.size) {
+                    val target = state.selectedTabIndex.coerceIn(0, (state.tabs.size - 1).coerceAtLeast(0))
+                    if (pagerState.currentPage != target) {
+                        pagerState.animateScrollToPage(target)
+                    }
+                }
+
+                // Clean overscroll-past-last-tab NestedScrollConnection (never fights normal pager swipes)
+                val overscrollNewTabConnection = remember(
+                    state.tabs.size,
+                    state.selectionMode,
+                    state.inlineSearchActive,
+                    overscrollThresholdPx,
+                ) {
+                    object : NestedScrollConnection {
+                        private var unconsumedLeftPx = 0f
+
+                        override fun onPostScroll(
+                            consumed: Offset,
+                            available: Offset,
+                            source: NestedScrollSource,
+                        ): Offset {
+                            if (source == NestedScrollSource.UserInput &&
+                                !state.selectionMode &&
+                                !state.inlineSearchActive &&
+                                pagerState.currentPage == state.tabs.lastIndex &&
+                                available.x < 0f
+                            ) {
+                                unconsumedLeftPx += -available.x
+                            } else if (available.x > 0f) {
+                                unconsumedLeftPx = 0f
+                            }
+                            return Offset.Zero
+                        }
+
+                        override suspend fun onPreFling(available: Velocity): Velocity {
+                            if (unconsumedLeftPx >= overscrollThresholdPx) {
+                                unconsumedLeftPx = 0f
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.openTab(BrowserPane.PRIMARY)
+                            } else {
+                                unconsumedLeftPx = 0f
+                            }
+                            return Velocity.Zero
+                        }
                     }
                 }
 
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
+                    key = { index -> state.tabs.getOrNull(index)?.id ?: index.toLong() },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(overscrollNewTabConnection),
                 ) { page ->
                     val currentTab = state.tabs.getOrNull(page)
                     val pageFiles = if (page == state.selectedTabIndex) {
@@ -532,28 +604,10 @@ fun BrowserScreen(
                         currentTab?.let { state.tabFilesCache[it.id] } ?: emptyList()
                     }
 
-                    val overscrollModifier = if (page == state.tabs.lastIndex) {
-                        Modifier.pointerInput(Unit) {
-                            var dragAmount = 0f
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { _, amount -> dragAmount += amount },
-                                onDragEnd = {
-                                    if (dragAmount < -150f) {
-                                        viewModel.openTab(BrowserPane.PRIMARY)
-                                    }
-                                    dragAmount = 0f
-                                },
-                                onDragCancel = { dragAmount = 0f },
-                            )
-                        }
-                    } else Modifier
-
                     PullToRefreshBox(
                         isRefreshing = state.isLoading && page == state.selectedTabIndex,
                         onRefresh = viewModel::refresh,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(overscrollModifier),
+                        modifier = Modifier.fillMaxSize(),
                     ) {
                         if (state.viewMode == ViewMode.GRID) {
                             LazyVerticalGrid(
@@ -567,18 +621,13 @@ fun BrowserScreen(
                                 ),
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                    BrowserHeaderAccessories(
-                                        state = state,
-                                        onNavigate = viewModel::navigateTo,
-                                        onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
-                                        onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
-                                        onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
-                                        onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
-                                    )
+                                if ((state.rootEnabled && state.isRootPath) || state.insideArchive) {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        BrowserStatusBanners(state = state)
+                                    }
                                 }
                                 if (pageFiles.isEmpty() && !state.isLoading) {
-                                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
                                         EmptyState(state.error)
                                     }
                                 } else {
@@ -605,15 +654,10 @@ fun BrowserScreen(
                                 ),
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                item(key = "browser_accessories") {
-                                    BrowserHeaderAccessories(
-                                        state = state,
-                                        onNavigate = viewModel::navigateTo,
-                                        onSelectTab = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
-                                        onCloseTab = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
-                                        onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
-                                        onReorderTabs = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
-                                    )
+                                if ((state.rootEnabled && state.isRootPath) || state.insideArchive) {
+                                    item(key = "browser_banners") {
+                                        BrowserStatusBanners(state = state)
+                                    }
                                 }
 
                                 if (pageFiles.isEmpty() && !state.isLoading) {
@@ -654,57 +698,87 @@ fun BrowserScreen(
             }
         }
 
-        // Lightweight Scrim behind floating top pills
+        // Lightweight Scrim behind floating top bar
         FolioTopScrim(
-            height = topHeaderHeight,
+            height = topHeaderHeight + 16.dp,
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        // Minimal Transparent Floating Top Bar (Screenshot-Style)
-        FloatingBrowserTopBar(
-            selectionMode = state.selectionMode,
-            selectedCount = state.selectedCount,
-            locationTitle = activeLocationTitle,
-            rootActive = state.rootEnabled && state.isRootPath,
-            tabCount = state.tabs.size,
-            viewMode = state.viewMode,
-            visibleColumns = state.visibleColumns,
-            showHidden = state.showHidden,
-            dualPaneEnabled = state.dualPaneEnabled,
-            insideArchive = state.insideArchive,
-            canExtract = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_EXTRACTION),
-            canCreateFolder = state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY),
-            showSortMenu = showSortMenu,
-            sortOrder = state.sortOrder,
-            onDismissSortMenu = { showSortMenu = false },
-            onSelectSortField = { field ->
-                val newDir = if (state.sortOrder.field == field) {
-                    if (state.sortOrder.direction == SortDirection.ASCENDING) SortDirection.DESCENDING else SortDirection.ASCENDING
-                } else {
-                    SortDirection.ASCENDING
-                }
-                viewModel.setSortOrder(state.sortOrder.copy(field = field, direction = newDir))
-                showSortMenu = false
-            },
-            onOpenLocations = { showLocationsSheet = true },
-            onCopyPath = onCopyCurrentPath,
-            onOpenTabs = { showTabsSheet = true },
-            onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
-            onClearSelection = viewModel::clearSelection,
-            onSelectAll = viewModel::selectAll,
-            onOpenSortMenu = { showSortMenu = true },
-            onViewToggle = viewModel::toggleViewMode,
-            onToggleHidden = viewModel::toggleHidden,
-            onToggleColumn = viewModel::toggleColumn,
-            onToggleDualPane = viewModel::toggleDualPane,
-            onNewFolder = viewModel::showNewFolderDialog,
-            onExtractAll = { viewModel.extractArchive() },
-            onOpenSettings = onOpenSettings,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+        // Gallery-Style Floating Top Bar + Pinned Multi-Tab Strip
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+        ) {
+            FloatingBrowserTopBar(
+                selectionMode = state.selectionMode,
+                selectedCount = state.selectedCount,
+                folderTitle = activeFolderTitle,
+                currentPath = state.currentPath,
+                breadcrumbExpanded = breadcrumbExpanded,
+                rootActive = state.rootEnabled && state.isRootPath,
+                tabCount = state.tabs.size,
+                viewMode = state.viewMode,
+                visibleColumns = state.visibleColumns,
+                showHidden = state.showHidden,
+                dualPaneEnabled = state.dualPaneEnabled,
+                insideArchive = state.insideArchive,
+                canExtract = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_EXTRACTION),
+                canCreateFolder = state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY),
+                showSortMenu = showSortMenu,
+                sortOrder = state.sortOrder,
+                onToggleBreadcrumbs = { breadcrumbExpanded = !breadcrumbExpanded },
+                onNavigateBreadcrumb = { path ->
+                    breadcrumbExpanded = false
+                    viewModel.navigateTo(path)
+                },
+                onDismissSortMenu = { showSortMenu = false },
+                onSelectSortField = { field ->
+                    val newDir = if (state.sortOrder.field == field) {
+                        if (state.sortOrder.direction == SortDirection.ASCENDING) SortDirection.DESCENDING else SortDirection.ASCENDING
+                    } else {
+                        SortDirection.ASCENDING
+                    }
+                    viewModel.setSortOrder(state.sortOrder.copy(field = field, direction = newDir))
+                    showSortMenu = false
+                },
+                onOpenLocations = {
+                    breadcrumbExpanded = false
+                    showLocationsSheet = true
+                },
+                onCopyPath = onCopyCurrentPath,
+                onOpenTabs = { showTabsSheet = true },
+                onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
+                onClearSelection = viewModel::clearSelection,
+                onSelectAll = viewModel::selectAll,
+                onOpenSortMenu = { showSortMenu = true },
+                onViewToggle = viewModel::toggleViewMode,
+                onToggleHidden = viewModel::toggleHidden,
+                onToggleColumn = viewModel::toggleColumn,
+                onToggleDualPane = viewModel::toggleDualPane,
+                onNewFolder = viewModel::showNewFolderDialog,
+                onExtractAll = { viewModel.extractArchive() },
+                onOpenSettings = onOpenSettings,
+            )
+
+            AnimatedVisibility(
+                visible = hasPinnedTabs && !state.selectionMode,
+                enter = expandVertically(tween(180)) + fadeIn(tween(150)),
+                exit = shrinkVertically(tween(150)) + fadeOut(tween(120)),
+            ) {
+                BrowserTabsBar(
+                    tabs = state.tabs,
+                    selectedIndex = state.selectedTabIndex,
+                    onSelect = { viewModel.selectTab(BrowserPane.PRIMARY, it) },
+                    onClose = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
+                    onAdd = { viewModel.openTab(BrowserPane.PRIMARY) },
+                    onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
     }
 
-    // M3 Expressive Locations & Storage Sheet (Replaces Hamburger Drawer Storage/Bookmarks/Recent/Root)
     if (showLocationsSheet) {
         LocationsBottomSheet(
             state = state,
@@ -717,6 +791,10 @@ fun BrowserScreen(
                 showLocationsSheet = false
                 usbTreePicker.launch(null)
             },
+            onOpenNetwork = {
+                showLocationsSheet = false
+                onOpenNetwork()
+            },
             onOpenSavedSearch = { saved ->
                 showLocationsSheet = false
                 onOpenSavedSearch(saved)
@@ -725,7 +803,6 @@ fun BrowserScreen(
         )
     }
 
-    // M3 Expressive Selection Overflow Sheet (Opened via Morphed Bottom Bar -> "More")
     if (showSelectionMoreSheet && state.selectionMode) {
         SelectionMoreBottomSheet(
             selectedCount = state.selectedCount,
@@ -762,7 +839,6 @@ fun BrowserScreen(
         )
     }
 
-    // Existing Functional Dialogs (Preserved 100%)
     if (state.showNewFolderDialog) {
         InputDialog(
             title = stringResource(DesignSystemR.string.new_folder),
@@ -888,14 +964,7 @@ fun BrowserScreen(
 }
 
 @Composable
-private fun BrowserHeaderAccessories(
-    state: BrowserUiState,
-    onNavigate: (String) -> Unit,
-    onSelectTab: (Int) -> Unit,
-    onCloseTab: (Int) -> Unit,
-    onAddTab: () -> Unit,
-    onReorderTabs: (Int, Int) -> Unit,
-) {
+private fun BrowserStatusBanners(state: BrowserUiState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -943,30 +1012,32 @@ private fun BrowserHeaderAccessories(
                 }
             }
         }
-
-        if (state.tabs.size > 1) {
-            BrowserTabsBar(
-                tabs = state.tabs,
-                selectedIndex = state.selectedTabIndex,
-                onSelect = onSelectTab,
-                onClose = onCloseTab,
-                onAdd = onAddTab,
-                onReorder = onReorderTabs,
-            )
-        }
-
-        BreadcrumbBar(
-            currentPath = state.currentPath,
-            onNavigate = onNavigate,
-        )
     }
 }
 
+private data class TopPathSegment(val name: String, val path: String)
+
+private fun parseTopPathSegments(path: String): List<TopPathSegment> {
+    val cleaned = path.trimEnd('/')
+    if (cleaned.isEmpty() || cleaned == "/") return emptyList()
+    val parts = cleaned.split("/").filter { it.isNotEmpty() }
+    val segments = mutableListOf<TopPathSegment>()
+    var accumulated = ""
+    for (part in parts) {
+        accumulated = "$accumulated/$part"
+        segments.add(TopPathSegment(part, accumulated))
+    }
+    return segments
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FloatingBrowserTopBar(
     selectionMode: Boolean,
     selectedCount: Int,
-    locationTitle: String,
+    folderTitle: String,
+    currentPath: String,
+    breadcrumbExpanded: Boolean,
     rootActive: Boolean,
     tabCount: Int,
     viewMode: ViewMode,
@@ -978,6 +1049,8 @@ private fun FloatingBrowserTopBar(
     canCreateFolder: Boolean,
     showSortMenu: Boolean,
     sortOrder: SortOrder,
+    onToggleBreadcrumbs: () -> Unit,
+    onNavigateBreadcrumb: (String) -> Unit,
     onDismissSortMenu: () -> Unit,
     onSelectSortField: (SortField) -> Unit,
     onOpenLocations: () -> Unit,
@@ -998,229 +1071,367 @@ private fun FloatingBrowserTopBar(
 ) {
     var moreExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
+    // Gallery-app dark-tonal floating bubble shade
+    val floatingBubbleColor = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f)
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.Transparent)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        if (selectionMode) {
-            Surface(
-                onClick = onClearSelection,
-                shape = CircleShape,
-                color = colorScheme.primaryContainer,
-                contentColor = colorScheme.onPrimaryContainer,
-                modifier = Modifier.height(42.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.Close, stringResource(DesignSystemR.string.clear), modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(DesignSystemR.string.selected_count, selectedCount),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-
-            Surface(
-                onClick = onSelectAll,
-                shape = CircleShape,
-                color = colorScheme.surfaceContainerHigh,
-                contentColor = colorScheme.onSurface,
-                modifier = Modifier.size(42.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
-                }
-            }
-        } else {
-            // Left circular bubble (42.dp): 1 tab -> Add icon, > 1 tabs -> Badged folder icon
-            Surface(
-                onClick = { if (tabCount > 1) onOpenTabs() else onAddTab() },
-                shape = CircleShape,
-                color = colorScheme.surfaceContainerHigh,
-                contentColor = colorScheme.onSurface,
-                modifier = Modifier.size(42.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (tabCount > 1) {
-                        BadgedBox(
-                            badge = {
-                                Badge(
-                                    containerColor = colorScheme.primary,
-                                    contentColor = colorScheme.onPrimary,
-                                ) {
-                                    Text("$tabCount")
-                                }
-                            },
+        AnimatedContent(
+            targetState = when {
+                selectionMode -> 0
+                breadcrumbExpanded -> 1
+                else -> 2
+            },
+            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(110)) },
+            label = "gallery_top_bar_mode",
+            modifier = Modifier.fillMaxWidth(),
+        ) { mode ->
+            when (mode) {
+                // Selection Mode Header
+                0 -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Surface(
+                            onClick = onClearSelection,
+                            shape = CircleShape,
+                            color = colorScheme.primaryContainer,
+                            contentColor = colorScheme.onPrimaryContainer,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.height(44.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.FolderOpen,
-                                contentDescription = stringResource(DesignSystemR.string.tabs),
-                                modifier = Modifier.size(20.dp),
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Rounded.Close, stringResource(DesignSystemR.string.clear), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(DesignSystemR.string.selected_count, selectedCount),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
-                    } else {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = stringResource(DesignSystemR.string.add_tab),
-                            modifier = Modifier.size(20.dp),
-                        )
+
+                        Surface(
+                            onClick = onSelectAll,
+                            shape = CircleShape,
+                            color = floatingBubbleColor,
+                            contentColor = colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.width(8.dp))
+                // Expanded In-Place Directory Pill Strip (Single-tap on center folder pill)
+                1 -> {
+                    val scrollState = rememberScrollState()
+                    val segments = remember(currentPath) { parseTopPathSegments(currentPath) }
+                    LaunchedEffect(currentPath) {
+                        scrollState.animateScrollTo(scrollState.maxValue)
+                    }
 
-            // Center Folder Name Pill (single tap -> locations bottom sheet, long press -> copy path)
-            Surface(
-                shape = CircleShape,
-                color = if (rootActive) AccentOrange.copy(alpha = 0.2f) else colorScheme.surfaceContainerHigh,
-                contentColor = if (rootActive) AccentOrange else colorScheme.onSurface,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(42.dp)
-                    .combinedClickable(
-                        onClick = onOpenLocations,
-                        onLongClick = onCopyPath,
-                    ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(Icons.Rounded.Storage, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = locationTitle,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = floatingBubbleColor,
+                            contentColor = colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .horizontalScroll(scrollState)
+                                    .padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                // Chip 0: Storage / Locations Switcher
+                                Surface(
+                                    onClick = onOpenLocations,
+                                    shape = CircleShape,
+                                    color = colorScheme.primaryContainer,
+                                    contentColor = colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.height(32.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Rounded.Storage, null, modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = stringResource(DesignSystemR.string.storage),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                        )
+                                        Icon(Icons.Rounded.KeyboardArrowDown, null, modifier = Modifier.size(15.dp))
+                                    }
+                                }
+
+                                segments.forEachIndexed { index, seg ->
+                                    Icon(
+                                        imageVector = Icons.Rounded.ChevronRight,
+                                        contentDescription = null,
+                                        tint = colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    val isLast = index == segments.lastIndex
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isLast) colorScheme.secondaryContainer else colorScheme.surfaceContainer,
+                                        contentColor = if (isLast) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .height(32.dp)
+                                            .clip(CircleShape)
+                                            .combinedClickable(
+                                                onClick = {
+                                                    if (!isLast) onNavigateBreadcrumb(seg.path) else onToggleBreadcrumbs()
+                                                },
+                                                onLongClick = onCopyPath,
+                                            ),
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 11.dp),
+                                        ) {
+                                            Text(
+                                                text = seg.name,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Surface(
+                            onClick = onToggleBreadcrumbs,
+                            shape = CircleShape,
+                            color = floatingBubbleColor,
+                            contentColor = colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Close, stringResource(DesignSystemR.string.close), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
                 }
-            }
 
-            Spacer(Modifier.width(8.dp))
-
-            // Right Actions: Cast button + Circular Menu Bubble (42.dp)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CastRouteButton()
-
-                Box {
-                    Surface(
-                        onClick = { moreExpanded = true },
-                        shape = CircleShape,
-                        color = colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.size(42.dp),
+                // Gallery-Style Balanced 3-Element Header: [Left Tab Bubble]  [Centered Folder Pill]  [Right ⋮ Bubble]
+                else -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more_options), modifier = Modifier.size(20.dp))
-                        }
-                    }
-
-                    DropdownMenu(
-                        expanded = moreExpanded,
-                        onDismissRequest = { moreExpanded = false },
-                        shape = RoundedCornerShape(22.dp),
-                        containerColor = colorScheme.surfaceContainerHigh,
-                    ) {
-                        if (insideArchive) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(DesignSystemR.string.extract_all)) },
-                                enabled = canExtract,
-                                onClick = { onExtractAll(); moreExpanded = false },
-                                leadingIcon = { Icon(Icons.Rounded.Unarchive, null) },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(DesignSystemR.string.sort)) },
-                            onClick = { moreExpanded = false; onOpenSortMenu() },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Sort, null) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(DesignSystemR.string.toggle_view)) },
-                            onClick = { onViewToggle(); moreExpanded = false },
-                            leadingIcon = {
-                                Icon(if (viewMode == ViewMode.LIST) Icons.Rounded.GridView else Icons.Rounded.ViewList, null)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(if (dualPaneEnabled) DesignSystemR.string.close_dual_pane else DesignSystemR.string.open_dual_pane))
-                            },
-                            onClick = { onToggleDualPane(); moreExpanded = false },
-                            leadingIcon = { Icon(Icons.Rounded.ViewColumn, null) },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(if (showHidden) DesignSystemR.string.hide_hidden_files else DesignSystemR.string.show_hidden_files_menu))
-                            },
-                            onClick = { onToggleHidden(); moreExpanded = false },
-                            leadingIcon = { Icon(Icons.Rounded.Visibility, null) },
-                        )
-                        HorizontalDivider()
-                        FileColumn.entries.forEach { column ->
-                            DropdownMenuItem(
-                                text = { Text(column.label) },
-                                onClick = { onToggleColumn(column) },
-                                leadingIcon = { Icon(Icons.Rounded.ViewColumn, null) },
-                                trailingIcon = { Checkbox(checked = column in visibleColumns, onCheckedChange = null) },
-                            )
-                        }
-                        if (!insideArchive) {
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text(stringResource(DesignSystemR.string.new_folder)) },
-                                enabled = canCreateFolder,
-                                onClick = { onNewFolder(); moreExpanded = false },
-                                leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
-                            )
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(DesignSystemR.string.settings)) },
-                            onClick = { onOpenSettings(); moreExpanded = false },
-                            leadingIcon = { Icon(Icons.Rounded.Settings, null) },
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = onDismissSortMenu,
-                        shape = RoundedCornerShape(22.dp),
-                        containerColor = colorScheme.surfaceContainerHigh,
-                    ) {
-                        SortField.entries.forEach { field ->
-                            DropdownMenuItem(
-                                text = { Text(field.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                onClick = { onSelectSortField(field) },
-                                leadingIcon = {
-                                    if (sortOrder.field == field) {
+                        // Left circular bubble: 1 tab -> Add icon; >1 tabs -> Badged tab switcher (long-press adds tab)
+                        Surface(
+                            shape = CircleShape,
+                            color = floatingBubbleColor,
+                            contentColor = colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    onClick = { if (tabCount > 1) onOpenTabs() else onAddTab() },
+                                    onLongClick = onAddTab,
+                                ),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (tabCount > 1) {
+                                    BadgedBox(
+                                        badge = {
+                                            Badge(
+                                                containerColor = colorScheme.primary,
+                                                contentColor = colorScheme.onPrimary,
+                                            ) {
+                                                Text("$tabCount")
+                                            }
+                                        },
+                                    ) {
                                         Icon(
-                                            if (sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward
-                                            else Icons.Rounded.ArrowDownward,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
+                                            imageVector = Icons.Rounded.FolderOpen,
+                                            contentDescription = stringResource(DesignSystemR.string.tabs),
+                                            modifier = Modifier.size(20.dp),
                                         )
                                     }
-                                },
-                            )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = stringResource(DesignSystemR.string.add_tab),
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+                        }
+
+                        // Truly Centered Compact Gallery Pill (Single-tap -> expand directory pills, Long-press -> copy path)
+                        Surface(
+                            shape = CircleShape,
+                            color = if (rootActive) AccentOrange.copy(alpha = 0.24f) else floatingBubbleColor,
+                            contentColor = if (rootActive) AccentOrange else colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .padding(horizontal = 56.dp)
+                                .height(44.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    onClick = onToggleBreadcrumbs,
+                                    onLongClick = onCopyPath,
+                                ),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = folderTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+
+                        // Right circular ⋮ bubble
+                        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                            Surface(
+                                onClick = { moreExpanded = true },
+                                shape = CircleShape,
+                                color = floatingBubbleColor,
+                                contentColor = colorScheme.onSurface,
+                                shadowElevation = 4.dp,
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more_options), modifier = Modifier.size(20.dp))
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = moreExpanded,
+                                onDismissRequest = { moreExpanded = false },
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = colorScheme.surfaceContainerHigh,
+                            ) {
+                                if (insideArchive) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.extract_all)) },
+                                        enabled = canExtract,
+                                        onClick = { onExtractAll(); moreExpanded = false },
+                                        leadingIcon = { Icon(Icons.Rounded.Unarchive, null) },
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(DesignSystemR.string.places)) },
+                                    onClick = { moreExpanded = false; onOpenLocations() },
+                                    leadingIcon = { Icon(Icons.Rounded.Storage, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(DesignSystemR.string.sort)) },
+                                    onClick = { moreExpanded = false; onOpenSortMenu() },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Sort, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(DesignSystemR.string.toggle_view)) },
+                                    onClick = { onViewToggle(); moreExpanded = false },
+                                    leadingIcon = {
+                                        Icon(if (viewMode == ViewMode.LIST) Icons.Rounded.GridView else Icons.Rounded.ViewList, null)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(stringResource(if (dualPaneEnabled) DesignSystemR.string.close_dual_pane else DesignSystemR.string.open_dual_pane))
+                                    },
+                                    onClick = { onToggleDualPane(); moreExpanded = false },
+                                    leadingIcon = { Icon(Icons.Rounded.ViewColumn, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(stringResource(if (showHidden) DesignSystemR.string.hide_hidden_files else DesignSystemR.string.show_hidden_files_menu))
+                                    },
+                                    onClick = { onToggleHidden(); moreExpanded = false },
+                                    leadingIcon = { Icon(Icons.Rounded.Visibility, null) },
+                                )
+                                HorizontalDivider()
+                                FileColumn.entries.forEach { column ->
+                                    DropdownMenuItem(
+                                        text = { Text(column.label) },
+                                        onClick = { onToggleColumn(column) },
+                                        leadingIcon = { Icon(Icons.Rounded.ViewColumn, null) },
+                                        trailingIcon = { Checkbox(checked = column in visibleColumns, onCheckedChange = null) },
+                                    )
+                                }
+                                if (!insideArchive) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.new_folder)) },
+                                        enabled = canCreateFolder,
+                                        onClick = { onNewFolder(); moreExpanded = false },
+                                        leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
+                                    )
+                                }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(DesignSystemR.string.settings)) },
+                                    onClick = { onOpenSettings(); moreExpanded = false },
+                                    leadingIcon = { Icon(Icons.Rounded.Settings, null) },
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = onDismissSortMenu,
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = colorScheme.surfaceContainerHigh,
+                            ) {
+                                SortField.entries.forEach { field ->
+                                    DropdownMenuItem(
+                                        text = { Text(field.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                        onClick = { onSelectSortField(field) },
+                                        leadingIcon = {
+                                            if (sortOrder.field == field) {
+                                                Icon(
+                                                    if (sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward
+                                                    else Icons.Rounded.ArrowDownward,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1281,6 +1492,7 @@ private fun TabsBottomSheet(
             ) {
                 itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
                     val isSelected = index == selectedTabIndex
+                    val tabTitle = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
                     Surface(
                         onClick = { onSelectTab(index) },
                         shape = RoundedCornerShape(16.dp),
@@ -1302,7 +1514,7 @@ private fun TabsBottomSheet(
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" },
+                                    text = tabTitle,
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     maxLines = 1,
@@ -1318,7 +1530,6 @@ private fun TabsBottomSheet(
                             }
                             if (tabs.size > 1) {
                                 Spacer(Modifier.width(8.dp))
-                                val tabTitle = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
                                 IconButton(
                                     onClick = { onCloseTab(index) },
                                     modifier = Modifier.size(32.dp),
@@ -1345,6 +1556,7 @@ private fun LocationsBottomSheet(
     onDismiss: () -> Unit,
     onNavigate: (String) -> Unit,
     onOpenUsbPicker: () -> Unit,
+    onOpenNetwork: () -> Unit,
     onOpenSavedSearch: (SavedSearchEntity) -> Unit,
     onToggleRoot: () -> Unit,
 ) {
@@ -1361,15 +1573,15 @@ private fun LocationsBottomSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text(
-                text = "Locations",
+                text = stringResource(DesignSystemR.string.places),
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.padding(horizontal = 6.dp),
             )
 
-            // Storage Volumes + USB OTG
+            // Storage Volumes + USB OTG + Network
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                FolioSectionLabel("Storage")
-                val totalStorageRows = state.volumes.size + state.usbRoots.size + 1
+                FolioSectionLabel(stringResource(DesignSystemR.string.storage))
+                val totalStorageRows = state.volumes.size + state.usbRoots.size + 2
                 var rowIdx = 0
                 FolioSegmentedColumn {
                     state.volumes.forEach { vol ->
@@ -1382,16 +1594,26 @@ private fun LocationsBottomSheet(
                             SheetActionRow(Icons.Rounded.Usb, usb.name, usb.path)
                         }
                     }
-                    FolioSegmentedCard(index = rowIdx, count = totalStorageRows, onClick = onOpenUsbPicker) {
-                        SheetActionRow(Icons.Rounded.Usb, "Mount USB storage", "Select external drive folder")
+                    FolioSegmentedCard(index = rowIdx++, count = totalStorageRows, onClick = onOpenUsbPicker) {
+                        SheetActionRow(
+                            Icons.Rounded.Usb,
+                            stringResource(DesignSystemR.string.mount_usb),
+                            stringResource(DesignSystemR.string.choose_usb_folder),
+                        )
+                    }
+                    FolioSegmentedCard(index = rowIdx, count = totalStorageRows, onClick = onOpenNetwork) {
+                        SheetActionRow(
+                            Icons.Rounded.Lan,
+                            stringResource(DesignSystemR.string.network_shares),
+                            stringResource(DesignSystemR.string.network),
+                        )
                     }
                 }
             }
 
-            // Bookmarks
             if (state.bookmarks.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FolioSectionLabel("Bookmarks")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.bookmarks))
                     FolioSegmentedColumn {
                         state.bookmarks.forEachIndexed { idx, bm ->
                             FolioSegmentedCard(index = idx, count = state.bookmarks.size, onClick = { onNavigate(bm.path) }) {
@@ -1402,10 +1624,9 @@ private fun LocationsBottomSheet(
                 }
             }
 
-            // Recent Locations
             if (state.recentLocations.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FolioSectionLabel("Recent")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.recent_locations))
                     val recents = state.recentLocations.take(5)
                     FolioSegmentedColumn {
                         recents.forEachIndexed { idx, loc ->
@@ -1417,10 +1638,9 @@ private fun LocationsBottomSheet(
                 }
             }
 
-            // Saved Searches
             if (state.savedSearches.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FolioSectionLabel("Saved Searches")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.search))
                     FolioSegmentedColumn {
                         state.savedSearches.forEachIndexed { idx, saved ->
                             FolioSegmentedCard(index = idx, count = state.savedSearches.size, onClick = { onOpenSavedSearch(saved) }) {
@@ -1431,7 +1651,6 @@ private fun LocationsBottomSheet(
                 }
             }
 
-            // Root Mode Toggle (when available)
             if (state.rootState != RootState.DENIED || state.rootEnabled) {
                 FolioSegmentedCard(index = 0, count = 1) {
                     Row(
@@ -1599,20 +1818,6 @@ private fun SheetActionRow(
 }
 
 @Composable
-private fun CastRouteButton() {
-    AndroidView(
-        factory = { viewContext ->
-            runCatching {
-                MediaRouteButton(viewContext).also { button ->
-                    CastButtonFactory.setUpMediaRouteButton(viewContext.applicationContext, button)
-                }
-            }.getOrElse { View(viewContext) }
-        },
-        modifier = Modifier.size(40.dp),
-    )
-}
-
-@Composable
 private fun EmptyState(error: String?) {
     Box(
         modifier = Modifier
@@ -1629,7 +1834,7 @@ private fun EmptyState(error: String?) {
             )
             Spacer(Modifier.height(14.dp))
             Text(
-                text = error ?: "Empty folder",
+                text = error ?: stringResource(DesignSystemR.string.empty_directory),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1811,8 +2016,11 @@ private fun openFile(context: Context, item: FileItem) {
     }
 }
 
-private fun shareFiles(context: Context, items: List<FileItem>) = launchShare(context, items, "Share")
-private fun sendNearbyFiles(context: Context, items: List<FileItem>) = launchShare(context, items, "Send with Quick Share")
+private fun shareFiles(context: Context, items: List<FileItem>) =
+    launchShare(context, items, context.getString(DesignSystemR.string.share))
+
+private fun sendNearbyFiles(context: Context, items: List<FileItem>) =
+    launchShare(context, items, context.getString(DesignSystemR.string.send_quick_share))
 
 private fun launchShare(context: Context, items: List<FileItem>, chooserTitle: String) {
     try {

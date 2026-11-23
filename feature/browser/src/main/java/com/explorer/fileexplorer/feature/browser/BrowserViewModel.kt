@@ -47,6 +47,7 @@ import com.explorer.fileexplorer.feature.settings.SwipeAction
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -466,6 +467,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun navigateTo(path: String) {
+        closeInlineSearch()
         primaryLoadJob?.cancel()
         directorySizeJob?.cancel()
         _state.update {
@@ -649,6 +651,7 @@ class BrowserViewModel @Inject constructor(
     fun selectTab(pane: BrowserPane, index: Int) {
         val state = _state.value
         if (pane == BrowserPane.PRIMARY) {
+            closeInlineSearch()
             val tab = state.tabs.getOrNull(index) ?: return
             if (index == state.selectedTabIndex) return
             _state.update {
@@ -1521,19 +1524,26 @@ class BrowserViewModel @Inject constructor(
             }
         } else {
             inlineSearchJob = viewModelScope.launch {
+                delay(220L)
                 _state.update { it.copy(isInlineSearching = true, inlineSearchResults = emptyList()) }
                 try {
                     val repo = repoFactory.getRepository(current.currentPath)
                     val results = mutableListOf<FileItem>()
+                    var lastEmitNanos = 0L
                     repo.search(
                         rootPath = current.currentPath,
                         query = trimmed,
                         regex = false,
                         includeHidden = current.showHidden,
-                    ).collect { item ->
+                    ).take(500).collect { item ->
                         results.add(item)
-                        _state.update { it.copy(inlineSearchResults = results.toList()) }
+                        val now = System.nanoTime()
+                        if (now - lastEmitNanos >= 80_000_000L || results.size <= 10) {
+                            lastEmitNanos = now
+                            _state.update { it.copy(inlineSearchResults = results.toList()) }
+                        }
                     }
+                    _state.update { it.copy(inlineSearchResults = results.toList()) }
                 } catch (c: CancellationException) {
                     throw c
                 } catch (_: Exception) {
