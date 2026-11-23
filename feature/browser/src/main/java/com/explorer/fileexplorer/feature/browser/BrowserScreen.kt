@@ -64,6 +64,7 @@ import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.EnhancedEncryption
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.GridView
@@ -71,6 +72,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Label
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.MoreVert
@@ -78,6 +80,7 @@ import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.SavedSearch
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Unarchive
@@ -97,6 +100,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -121,6 +125,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -158,6 +163,7 @@ import com.explorer.fileexplorer.core.model.RepositoryOperation
 import com.explorer.fileexplorer.core.model.SortDirection
 import com.explorer.fileexplorer.core.model.SortField
 import com.explorer.fileexplorer.core.model.SortOrder
+import com.explorer.fileexplorer.core.model.SwipeAction
 import com.explorer.fileexplorer.core.model.ViewMode
 import com.explorer.fileexplorer.core.storage.RootState
 import com.explorer.fileexplorer.core.ui.BreadcrumbBar
@@ -686,7 +692,6 @@ fun BrowserScreen(
             onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
             onClearSelection = viewModel::clearSelection,
             onSelectAll = viewModel::selectAll,
-            onSearchClick = onOpenSearch,
             onOpenSortMenu = { showSortMenu = true },
             onViewToggle = viewModel::toggleViewMode,
             onToggleHidden = viewModel::toggleHidden,
@@ -1203,7 +1208,7 @@ private fun FloatingBrowserTopBar(
                     ) {
                         SortField.entries.forEach { field ->
                             DropdownMenuItem(
-                                text = { Text(field.label) },
+                                text = { Text(field.name.lowercase().replaceFirstChar { it.uppercase() }) },
                                 onClick = { onSelectSortField(field) },
                                 leadingIcon = {
                                     if (sortOrder.field == field) {
@@ -1313,13 +1318,14 @@ private fun TabsBottomSheet(
                             }
                             if (tabs.size > 1) {
                                 Spacer(Modifier.width(8.dp))
+                                val tabTitle = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
                                 IconButton(
                                     onClick = { onCloseTab(index) },
                                     modifier = Modifier.size(32.dp),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = stringResource(DesignSystemR.string.close_tab, tab.title),
+                                        contentDescription = stringResource(DesignSystemR.string.close_tab, tabTitle),
                                         modifier = Modifier.size(16.dp),
                                     )
                                 }
@@ -1330,7 +1336,6 @@ private fun TabsBottomSheet(
             }
         }
     }
-}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
