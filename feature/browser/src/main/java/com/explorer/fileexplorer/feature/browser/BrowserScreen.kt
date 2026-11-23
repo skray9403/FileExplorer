@@ -896,7 +896,7 @@ private fun FloatingBrowserTopBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Switch location", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -1125,8 +1125,8 @@ private fun LocationsBottomSheet(
                             Icon(Icons.Rounded.Warning, null, tint = AccentOrange, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(12.dp))
                             Column {
-                                Text("Root mode", style = MaterialTheme.typography.titleSmall)
-                                Text("Browse system partitions", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(DesignSystemR.string.root_mode), style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(DesignSystemR.string.browse_system_partitions), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Switch(checked = state.rootEnabled, onCheckedChange = { onToggleRoot() })

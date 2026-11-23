@@ -221,7 +221,7 @@ fun FolioMorphingBottomBar(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Rounded.ArrowUpward,
-                            contentDescription = "Scroll to top",
+                            contentDescription = stringResource(R.string.scroll_to_top),
                             modifier = Modifier.size(20.dp),
                         )
                     }
