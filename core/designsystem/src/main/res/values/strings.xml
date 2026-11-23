@@ -513,7 +513,6 @@
     <string name="shizuku_desc">Elevated Android/data &amp; OBB access</string>
     <string name="root_modules_desc">Magisk / KernelSU module browser</string>
     <string name="settings_desc">Theme, gestures, columns, and preferences</string>
-    <string name="new_folder">New folder</string>
     <string name="new_file">New file</string>
     <string name="mount_usb">Mount USB</string>
     <string name="network_shares">Network shares</string>
@@ -537,7 +536,6 @@
     <string name="create_file_error">Unable to create file</string>
     <string name="more_options">More options</string>
     <string name="tabs">Tabs</string>
-    <string name="close_tab">Close tab</string>
     <string name="add_tab">Add tab</string>
     <string name="apps">Apps</string>
     <string name="cloud">Cloud</string>

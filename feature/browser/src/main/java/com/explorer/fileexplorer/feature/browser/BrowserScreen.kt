@@ -1319,7 +1319,7 @@ private fun TabsBottomSheet(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = stringResource(DesignSystemR.string.close_tab),
+                                        contentDescription = stringResource(DesignSystemR.string.close_tab, tab.title),
                                         modifier = Modifier.size(16.dp),
                                     )
                                 }
