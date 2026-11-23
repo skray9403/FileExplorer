@@ -190,8 +190,10 @@ private fun TransferTaskItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                val displayName = task.sourcePaths.firstOrNull()?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
+                    ?: task.currentFile.trimEnd('/').substringAfterLast('/').ifBlank { task.operation.name }
                 Text(
-                    text = task.sourcePath.trimEnd('/').substringAfterLast('/').ifBlank { task.operation.name },
+                    text = displayName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
