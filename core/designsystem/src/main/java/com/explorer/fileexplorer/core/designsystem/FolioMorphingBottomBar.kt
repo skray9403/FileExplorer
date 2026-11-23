@@ -521,11 +521,12 @@ fun FolioMorphingBottomBar(
                             }
                         }
                     }
+                }
 
-                    // Slot 3: Action FAB / FAB Menu (Anchored to BottomEnd)
-                    Box(
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                    ) {
+                // Slot 3: Action FAB / FAB Menu (Anchored to BottomEnd)
+                Box(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                ) {
                         if (controller.canPaste) {
                             Surface(
                                 onClick = controller.onPaste,
