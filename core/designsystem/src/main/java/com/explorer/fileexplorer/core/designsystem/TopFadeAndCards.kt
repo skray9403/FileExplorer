@@ -1,9 +1,12 @@
 package com.explorer.fileexplorer.core.designsystem
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -31,11 +34,11 @@ fun FolioTopScrim(
     modifier: Modifier = Modifier,
     baseColor: Color = MaterialTheme.colorScheme.background,
 ) {
-    androidx.compose.foundation.layout.Spacer(
+    Spacer(
         modifier = modifier
             .fillMaxWidth()
-            .androidx.compose.foundation.layout.height(height)
-            .androidx.compose.foundation.background(
+            .height(height)
+            .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         baseColor.copy(alpha = 0.92f),

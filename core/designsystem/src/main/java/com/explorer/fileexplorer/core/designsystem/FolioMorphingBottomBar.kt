@@ -193,7 +193,7 @@ fun FolioMorphingBottomBar(
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (controller.inlineSearchQuery.isEmpty()) {
                                         Text(
-                                            text = stringResource(R.string.search_hint),
+                                            text = stringResource(R.string.search_files_hint),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         )
