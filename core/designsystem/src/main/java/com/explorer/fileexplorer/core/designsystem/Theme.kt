@@ -2,7 +2,8 @@ package com.explorer.fileexplorer.core.designsystem
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -23,9 +24,6 @@ enum class ThemeMode {
     }
 }
 
-/**
- * Clean Material 3 Expressive typography scale with proper line heights for calm file legibility.
- */
 val AppTypography = Typography(
     displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 36.sp, lineHeight = 44.sp),
     headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 28.sp, lineHeight = 36.sp),
@@ -36,7 +34,7 @@ val AppTypography = Typography(
     bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
     bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
     bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
-    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
+    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
     labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
     labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp),
 )
@@ -46,6 +44,7 @@ object FolioTheme {
         @Composable get() = LocalFolioExtendedColors.current
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FileExplorerTheme(
     themeMode: ThemeMode = ThemeMode.DYNAMIC,
@@ -63,8 +62,8 @@ fun FileExplorerTheme(
     }
 
     val colorScheme = when (themeMode) {
-        ThemeMode.LIGHT -> if (supportsDynamic) dynamicLightColorScheme(context) else ExpressiveLightColorScheme
-        ThemeMode.DARK -> if (supportsDynamic) dynamicDarkColorScheme(context) else ExpressiveDarkColorScheme
+        ThemeMode.LIGHT -> ExpressiveLightColorScheme
+        ThemeMode.DARK -> ExpressiveDarkColorScheme
         ThemeMode.OLED -> {
             if (supportsDynamic) {
                 dynamicDarkColorScheme(context).copy(
@@ -92,7 +91,7 @@ fun FileExplorerTheme(
         LocalFolioExtendedColors provides extendedColors,
         LocalCornerStyle provides cornerStyle,
     ) {
-        MaterialTheme(
+        MaterialExpressiveTheme(
             colorScheme = colorScheme,
             typography = AppTypography,
             shapes = shapes,
@@ -101,3 +100,4 @@ fun FileExplorerTheme(
         )
     }
 }
+

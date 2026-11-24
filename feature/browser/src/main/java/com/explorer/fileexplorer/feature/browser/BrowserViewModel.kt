@@ -557,6 +557,70 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    fun openInSplitTab(folderPath: String) {
+        val current = _state.value
+        if (current.insideArchive) {
+            viewModelScope.launch {
+                _events.emit(BrowserEvent.Toast("Close the archive before opening dual-pane view"))
+            }
+            return
+        }
+        _state.update {
+            it.copy(
+                dualPaneEnabled = true,
+                selectedItems = emptySet(),
+                secondarySelectedItems = emptySet(),
+                pendingDrop = null,
+            )
+        }
+        navigateSecondaryTo(folderPath)
+    }
+
+    fun importDroppedUris(
+        context: android.content.Context,
+        uris: List<Uri>,
+        destinationDir: String = _state.value.currentPath,
+    ) {
+        if (uris.isEmpty() || _state.value.insideArchive) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val destRoot = java.io.File(destinationDir)
+            if (!destRoot.isDirectory) return@launch
+            var imported = 0
+            uris.forEach { uri ->
+                runCatching {
+                    val displayName = context.contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                        null,
+                        null,
+                        null,
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }?.substringAfterLast('/')?.ifBlank { null }
+                        ?: "dropped_${System.currentTimeMillis()}"
+
+                    var target = java.io.File(destRoot, displayName)
+                    var counter = 1
+                    val base = target.nameWithoutExtension
+                    val ext = target.extension
+                    while (target.exists()) {
+                        val candidate = if (ext.isNotEmpty()) "$base ($counter).$ext" else "$base ($counter)"
+                        target = java.io.File(destRoot, candidate)
+                        counter++
+                    }
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    imported++
+                }
+            }
+            if (imported > 0) {
+                _events.emit(BrowserEvent.Toast("Imported $imported file(s)"))
+                withContext(Dispatchers.Main) { refresh() }
+            }
+        }
+    }
+
     fun navigateSecondaryTo(path: String) {
         if (!_state.value.dualPaneEnabled) return
         secondaryLoadJob?.cancel()

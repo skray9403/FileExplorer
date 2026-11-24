@@ -140,15 +140,15 @@ fun AppNavigation(
                     )
                 },
                 popEnterTransition = {
-                    fadeIn(tween(180)) + slideInHorizontally(
-                        animationSpec = tween(240),
-                        initialOffsetX = { width -> -width / 24 },
+                    fadeIn(tween(200)) + androidx.compose.animation.scaleIn(
+                        animationSpec = tween(220),
+                        initialScale = 0.94f,
                     )
                 },
                 popExitTransition = {
-                    fadeOut(tween(120)) + slideOutHorizontally(
-                        animationSpec = tween(180),
-                        targetOffsetX = { width -> width / 14 },
+                    fadeOut(tween(160)) + androidx.compose.animation.scaleOut(
+                        animationSpec = tween(200),
+                        targetScale = 0.92f,
                     )
                 },
             ) {

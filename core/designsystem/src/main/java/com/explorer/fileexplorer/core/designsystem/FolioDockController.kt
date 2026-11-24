@@ -31,15 +31,10 @@ data class FolioSelectionDockActions(
     val onMore: () -> Unit = {},
 )
 
-/**
- * Hoisted state controller bridging active screens (e.g. BrowserScreen) to the single
- * persistent floating [FolioMorphingBottomBar] mounted above the NavHost.
- */
 @Stable
 class FolioDockController {
     private var activeOwner: String? = null
 
-    // Changing this key auto-collapses transient dock overlays (like the FAB menu)
     var contextResetKey by mutableStateOf("")
 
     var showScrollToTop by mutableStateOf(false)
@@ -47,6 +42,7 @@ class FolioDockController {
 
     var selectionMode by mutableStateOf(false)
     var selectionActions by mutableStateOf(FolioSelectionDockActions())
+    var selectionMoreItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
 
     var isSubfolder by mutableStateOf(false)
     var onNavigateUp by mutableStateOf<() -> Unit>({})
@@ -66,7 +62,6 @@ class FolioDockController {
     var canCreatePrimaryAction by mutableStateOf(true)
     var onPrimaryAction by mutableStateOf<() -> Unit>({})
 
-    // AppNavigation-owned global task state (never wiped by screen teardown)
     var taskBadgeCount by mutableStateOf(0)
     var taskProgress by mutableStateOf<Float?>(null)
     var taskHasConflict by mutableStateOf(false)
@@ -91,6 +86,7 @@ class FolioDockController {
         onScrollToTop = {}
         selectionMode = false
         selectionActions = FolioSelectionDockActions()
+        selectionMoreItems = emptyList()
         canPaste = false
         onPaste = {}
         canCreatePrimaryAction = true
@@ -115,3 +111,4 @@ class FolioDockController {
 val LocalFolioDockController = compositionLocalOf<FolioDockController> {
     FolioDockController()
 }
+

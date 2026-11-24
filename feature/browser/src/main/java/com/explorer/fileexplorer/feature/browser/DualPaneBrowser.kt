@@ -2,7 +2,6 @@ package com.explorer.fileexplorer.feature.browser
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,20 +12,19 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import com.explorer.fileexplorer.core.model.FileColumn
 import com.explorer.fileexplorer.core.model.FileItem
 import com.explorer.fileexplorer.core.ui.BreadcrumbBar
 import com.explorer.fileexplorer.core.ui.FileListItem
+import com.explorer.fileexplorer.core.ui.folioDragSource
+import com.explorer.fileexplorer.core.ui.folioDropTarget
+import com.explorer.fileexplorer.core.ui.folioPayloadOrNull
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -52,43 +50,9 @@ internal fun DualPaneContent(
     onReorderTabs: (BrowserPane, Int, Int) -> Unit,
     onRequestDrop: (List<FileItem>, String, BrowserPane, BrowserPane) -> Unit,
 ) {
-    var dragSession by remember { mutableStateOf<DragSession?>(null) }
-    var primaryBounds by remember { mutableStateOf(Rect.Zero) }
-    var secondaryBounds by remember { mutableStateOf(Rect.Zero) }
-    val itemBounds = remember { mutableStateMapOf<ItemKey, Rect>() }
-
-    fun beginDrag(pane: BrowserPane, item: FileItem, localOffset: Offset) {
-        val selected = if (pane == BrowserPane.PRIMARY) state.selectedItems else state.secondarySelectedItems
-        val files = if (pane == BrowserPane.PRIMARY) state.files else state.secondaryFiles
-        val items = if (item.path in selected) files.filter { it.path in selected } else listOf(item)
-        val itemBoundsInRoot = itemBounds[ItemKey(pane, item.path)]
-        val position = itemBoundsInRoot?.topLeft?.plus(localOffset) ?: Offset.Zero
-        dragSession = DragSession(pane, items, position)
-    }
-
-    fun updateDrag(delta: Offset) {
-        dragSession = dragSession?.let { it.copy(position = it.position + delta) }
-    }
-
-    fun finishDrag() {
-        val session = dragSession ?: return
-        val targetPane = when {
-            primaryBounds.contains(session.position) -> BrowserPane.PRIMARY
-            secondaryBounds.contains(session.position) -> BrowserPane.SECONDARY
-            else -> null
-        }
-        if (targetPane != null && targetPane != session.sourcePane) {
-            val destination = if (targetPane == BrowserPane.PRIMARY) state.currentPath else state.secondaryPath
-            onRequestDrop(session.items, destination, session.sourcePane, targetPane)
-        }
-        dragSession = null
-    }
-
     Row(modifier = Modifier.fillMaxSize()) {
         PanePanel(
-            modifier = Modifier
-                .weight(1f)
-                .onGloballyPositioned { primaryBounds = it.boundsInRoot() },
+            modifier = Modifier.weight(1f),
             title = stringResource(DesignSystemR.string.left_pane),
             path = state.currentPath,
             files = state.files,
@@ -106,10 +70,6 @@ internal fun DualPaneContent(
             onCloseTab = { stateIndex -> onCloseTab(BrowserPane.PRIMARY, stateIndex) },
             onAddTab = { onAddTab(BrowserPane.PRIMARY) },
             onReorderTabs = { from, to -> onReorderTabs(BrowserPane.PRIMARY, from, to) },
-            isDropTarget = dragSession?.let {
-                it.sourcePane != BrowserPane.PRIMARY && primaryBounds.contains(it.position)
-            } == true,
-            itemBounds = itemBounds,
             pane = BrowserPane.PRIMARY,
             onNavigate = onPrimaryNavigate,
             onItemClick = onPrimaryItemClick,
@@ -118,18 +78,13 @@ internal fun DualPaneContent(
             onSwipeRight = onPrimarySwipeRight,
             onNavigateUp = onPrimaryNavigateUp,
             onRefresh = onPrimaryRefresh,
-            onDragStart = ::beginDrag,
-            onDrag = ::updateDrag,
-            onDragEnd = ::finishDrag,
-            onDragCancel = { dragSession = null },
+            onRequestDrop = onRequestDrop,
         )
 
         VerticalDivider(modifier = Modifier.fillMaxHeight())
 
         PanePanel(
-            modifier = Modifier
-                .weight(1f)
-                .onGloballyPositioned { secondaryBounds = it.boundsInRoot() },
+            modifier = Modifier.weight(1f),
             title = stringResource(DesignSystemR.string.right_pane),
             path = state.secondaryPath,
             files = state.secondaryFiles,
@@ -147,10 +102,6 @@ internal fun DualPaneContent(
             onCloseTab = { stateIndex -> onCloseTab(BrowserPane.SECONDARY, stateIndex) },
             onAddTab = { onAddTab(BrowserPane.SECONDARY) },
             onReorderTabs = { from, to -> onReorderTabs(BrowserPane.SECONDARY, from, to) },
-            isDropTarget = dragSession?.let {
-                it.sourcePane != BrowserPane.SECONDARY && secondaryBounds.contains(it.position)
-            } == true,
-            itemBounds = itemBounds,
             pane = BrowserPane.SECONDARY,
             onNavigate = onSecondaryNavigate,
             onItemClick = onSecondaryItemClick,
@@ -159,10 +110,7 @@ internal fun DualPaneContent(
             onSwipeRight = onSecondarySwipeRight,
             onNavigateUp = onSecondaryNavigateUp,
             onRefresh = onSecondaryRefresh,
-            onDragStart = ::beginDrag,
-            onDrag = ::updateDrag,
-            onDragEnd = ::finishDrag,
-            onDragCancel = { dragSession = null },
+            onRequestDrop = onRequestDrop,
         )
     }
 }
@@ -178,7 +126,7 @@ private fun PanePanel(
     error: String?,
     selectedItems: Set<String>,
     compactDensity: Boolean,
-    visibleColumns: Set<com.explorer.fileexplorer.core.model.FileColumn>,
+    visibleColumns: Set<FileColumn>,
     showDirectorySizes: Boolean,
     directorySizes: Map<String, Long>,
     directorySizesUnavailable: Set<String>,
@@ -188,8 +136,6 @@ private fun PanePanel(
     onCloseTab: (Int) -> Unit,
     onAddTab: () -> Unit,
     onReorderTabs: (Int, Int) -> Unit,
-    isDropTarget: Boolean,
-    itemBounds: SnapshotStateMap<ItemKey, Rect>,
     pane: BrowserPane,
     onNavigate: (String) -> Unit,
     onItemClick: (FileItem) -> Unit,
@@ -198,22 +144,26 @@ private fun PanePanel(
     onSwipeRight: (FileItem) -> Unit,
     onNavigateUp: () -> Unit,
     onRefresh: () -> Unit,
-    onDragStart: (BrowserPane, FileItem, Offset) -> Unit,
-    onDrag: (Offset) -> Unit,
-    onDragEnd: () -> Unit,
-    onDragCancel: () -> Unit,
+    onRequestDrop: (List<FileItem>, String, BrowserPane, BrowserPane) -> Unit,
 ) {
-    val currentOnDragStart by rememberUpdatedState(onDragStart)
-    val currentOnDrag by rememberUpdatedState(onDrag)
-    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    var isDropTarget by remember { mutableStateOf(false) }
     val borderColor = if (isDropTarget) MaterialTheme.colorScheme.primary
     else MaterialTheme.colorScheme.outlineVariant
 
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .border(if (isDropTarget) 2.dp else 1.dp, borderColor),
+            .border(if (isDropTarget) 2.dp else 1.dp, borderColor)
+            .folioDropTarget(
+                acceptsExternal = false,
+                onHoverChanged = { isDropTarget = it },
+                onDrop = { event ->
+                    val payload = event.folioPayloadOrNull() ?: return@folioDropTarget false
+                    val sourcePane = if (pane == BrowserPane.PRIMARY) BrowserPane.SECONDARY else BrowserPane.PRIMARY
+                    onRequestDrop(payload.items, path, sourcePane, pane)
+                    true
+                },
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -269,7 +219,6 @@ private fun PanePanel(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(items = files, key = { it.path }) { item ->
-                        val itemKey = ItemKey(pane, item.path)
                         FileListItem(
                             item = item,
                             isSelected = item.path in selectedItems,
@@ -283,21 +232,14 @@ private fun PanePanel(
                             onLongClick = { onItemLongClick(item) },
                             onSwipeLeft = { onSwipeLeft(item) },
                             onSwipeRight = { onSwipeRight(item) },
-                            modifier = Modifier
-                                .onGloballyPositioned { itemBounds[itemKey] = it.boundsInRoot() }
-                                .pointerInput(itemKey) {
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = { offset ->
-                                            currentOnDragStart(pane, item, offset)
-                                        },
-                                        onDrag = { change, amount ->
-                                            change.consume()
-                                            currentOnDrag(amount)
-                                        },
-                                        onDragEnd = { currentOnDragEnd() },
-                                        onDragCancel = { currentOnDragCancel() },
-                                    )
+                            modifier = Modifier.folioDragSource(
+                                enabled = true,
+                                context = LocalContext.current,
+                                itemsProvider = {
+                                    if (item.path in selectedItems) files.filter { it.path in selectedItems } else listOf(item)
                                 },
+                                sourcePath = path,
+                            ),
                         )
                     }
                 }
@@ -357,11 +299,3 @@ internal fun DropConfirmationDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(DesignSystemR.string.cancel)) } },
     )
 }
-
-private data class ItemKey(val pane: BrowserPane, val path: String)
-
-private data class DragSession(
-    val sourcePane: BrowserPane,
-    val items: List<FileItem>,
-    val position: Offset,
-)

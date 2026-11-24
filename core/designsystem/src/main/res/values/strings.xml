@@ -543,4 +543,9 @@
     <string name="dismiss">Dismiss</string>
     <string name="overwrite">Overwrite</string>
     <string name="no_active_tasks">No active tasks</string>
+    <string name="open_in_new_tab">Open in new tab</string>
+    <string name="open_in_split_tab">Open in split tab</string>
+    <string name="drop_to_open_tab">Drop to open in new tab</string>
+    <string name="drop_to_transfer">Drop to copy or move here</string>
+    <string name="dark_theme_desc">Material 3 dark surfaces</string>
 </resources>

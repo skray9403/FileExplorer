@@ -2,7 +2,7 @@ package com.explorer.fileexplorer.feature.browser
 
 import android.content.Context
 import android.content.Intent
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,13 +46,17 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -117,7 +121,16 @@ fun CollectionsScreen(
         onDispose { dockController.clearScreenBindings("collections") }
     }
 
-    BackHandler(enabled = selected != null) { viewModel.closeCategory() }
+    var backPreviewProgress by remember { mutableFloatStateOf(0f) }
+    PredictiveBackHandler(enabled = selected != null) { progress ->
+        try {
+            progress.collect { backPreviewProgress = it.progress }
+            backPreviewProgress = 0f
+            viewModel.closeCategory()
+        } catch (_: CancellationException) {
+            backPreviewProgress = 0f
+        }
+    }
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 60.dp
@@ -207,7 +220,14 @@ fun CollectionsScreen(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = backPreviewProgress.coerceIn(0f, 1f)
+                        val scale = 1f - (0.05f * p)
+                        scaleX = scale
+                        scaleY = scale
+                    },
                 contentPadding = PaddingValues(
                     top = headerHeight + 8.dp,
                     bottom = 144.dp,

@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,8 @@ import com.explorer.fileexplorer.core.cloud.CloudAccountManager
 import com.explorer.fileexplorer.core.model.CapabilityStatus
 import com.explorer.fileexplorer.core.model.RepositoryCapabilityMatrix
 import com.explorer.fileexplorer.core.model.RepositoryFeature
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.designsystem.ThemeMode
 import com.explorer.fileexplorer.plugin.PluginDescriptor
@@ -491,33 +494,40 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.show_hidden_files),
-                subtitle = stringResource(DesignSystemR.string.display_dotfiles),
-                checked = state.showHidden,
-                onToggle = viewModel::toggleShowHidden,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.folders_first),
-                subtitle = stringResource(DesignSystemR.string.always_show_folders),
-                checked = state.foldersFirst,
-                onToggle = viewModel::toggleFoldersFirst,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.compact_density),
-                subtitle = stringResource(DesignSystemR.string.reduce_spacing),
-                checked = state.compactDensity,
-                onToggle = viewModel::toggleCompactDensity,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.show_directory_sizes),
-                subtitle = stringResource(DesignSystemR.string.show_directory_sizes_description),
-                checked = state.showDirectorySizes,
-                onToggle = viewModel::toggleShowDirectorySizes,
-            )
+            FolioSegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                FolioSegmentedCard(index = 0, count = 4, onClick = viewModel::toggleShowHidden) {
+                    SettingsToggle(
+                        title = stringResource(DesignSystemR.string.show_hidden_files),
+                        subtitle = stringResource(DesignSystemR.string.display_dotfiles),
+                        checked = state.showHidden,
+                        onToggle = viewModel::toggleShowHidden,
+                    )
+                }
+                FolioSegmentedCard(index = 1, count = 4, onClick = viewModel::toggleFoldersFirst) {
+                    SettingsToggle(
+                        title = stringResource(DesignSystemR.string.folders_first),
+                        subtitle = stringResource(DesignSystemR.string.always_show_folders),
+                        checked = state.foldersFirst,
+                        onToggle = viewModel::toggleFoldersFirst,
+                    )
+                }
+                FolioSegmentedCard(index = 2, count = 4, onClick = viewModel::toggleCompactDensity) {
+                    SettingsToggle(
+                        title = stringResource(DesignSystemR.string.compact_density),
+                        subtitle = stringResource(DesignSystemR.string.reduce_spacing),
+                        checked = state.compactDensity,
+                        onToggle = viewModel::toggleCompactDensity,
+                    )
+                }
+                FolioSegmentedCard(index = 3, count = 4, onClick = viewModel::toggleShowDirectorySizes) {
+                    SettingsToggle(
+                        title = stringResource(DesignSystemR.string.show_directory_sizes),
+                        subtitle = stringResource(DesignSystemR.string.show_directory_sizes_description),
+                        checked = state.showDirectorySizes,
+                        onToggle = viewModel::toggleShowDirectorySizes,
+                    )
+                }
+            }
 
             ThumbnailCacheSettingsPanel(
                 state = state,
@@ -591,26 +601,32 @@ fun SettingsScreen(
                 uri?.let { cr.openInputStream(it)?.let(viewModel::previewBackup) }
             }
 
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.export_bookmarks)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.save_bookmarks_settings)) },
-                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
-                modifier = Modifier.clickable { exportLauncher.launch("fileexplorer-backup.json") },
-            )
-
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.import_bookmarks)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.restore_backup)) },
-                leadingContent = { Icon(Icons.Filled.FileDownload, null) },
-                modifier = Modifier.clickable { importLauncher.launch(arrayOf("application/json")) },
-            )
-
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.export_diagnostic_log)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.share_error_logs)) },
-                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
-                modifier = Modifier.clickable { viewModel.shareDiagnosticLog(appContext) },
-            )
+            FolioSegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                FolioSegmentedCard(index = 0, count = 3, onClick = { exportLauncher.launch("fileexplorer-backup.json") }) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(DesignSystemR.string.export_bookmarks)) },
+                        supportingContent = { Text(stringResource(DesignSystemR.string.save_bookmarks_settings)) },
+                        leadingContent = { Icon(Icons.Filled.FileUpload, null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+                FolioSegmentedCard(index = 1, count = 3, onClick = { importLauncher.launch(arrayOf("application/json")) }) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(DesignSystemR.string.import_bookmarks)) },
+                        supportingContent = { Text(stringResource(DesignSystemR.string.restore_backup)) },
+                        leadingContent = { Icon(Icons.Filled.FileDownload, null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+                FolioSegmentedCard(index = 2, count = 3, onClick = { viewModel.shareDiagnosticLog(appContext) }) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(DesignSystemR.string.export_diagnostic_log)) },
+                        supportingContent = { Text(stringResource(DesignSystemR.string.share_error_logs)) },
+                        leadingContent = { Icon(Icons.Filled.FileUpload, null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -633,10 +649,15 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.version)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.version_value)) },
-            )
+            FolioSegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+                FolioSegmentedCard(index = 0, count = 1) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(DesignSystemR.string.version)) },
+                        supportingContent = { Text(stringResource(DesignSystemR.string.version_value)) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
         }
     }
 
@@ -846,6 +867,7 @@ private fun SettingsToggle(
         trailingContent = {
             Switch(checked = checked, onCheckedChange = { onToggle() })
         },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
 
@@ -908,23 +930,31 @@ private fun ThemeSelector(
     val options = listOf(
         ThemeMode.SYSTEM to (stringResource(DesignSystemR.string.system_default) to stringResource(DesignSystemR.string.follow_device_theme)),
         ThemeMode.LIGHT to (stringResource(DesignSystemR.string.light) to stringResource(DesignSystemR.string.standard_light_surfaces)),
-        ThemeMode.DARK to (stringResource(DesignSystemR.string.dark) to stringResource(DesignSystemR.string.deep_dark_surfaces)),
+        ThemeMode.DARK to (stringResource(DesignSystemR.string.dark) to stringResource(DesignSystemR.string.dark_theme_desc)),
         ThemeMode.OLED to (stringResource(DesignSystemR.string.oled_true_black) to stringResource(DesignSystemR.string.pure_black_background)),
         ThemeMode.DYNAMIC to (stringResource(DesignSystemR.string.material_you) to stringResource(DesignSystemR.string.wallpaper_colors)),
     )
-    Column {
-        options.forEach { (mode, labels) ->
+    FolioSegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+        options.forEachIndexed { index, (mode, labels) ->
             val (title, subtitle) = labels
-            ListItem(
-                headlineContent = { Text(title) },
-                supportingContent = { Text(subtitle) },
-                trailingContent = {
-                    RadioButton(
-                        selected = current == mode,
-                        onClick = { onSelect(mode) },
-                    )
-                },
-            )
+            FolioSegmentedCard(
+                index = index,
+                count = options.size,
+                onClick = { onSelect(mode) },
+            ) {
+                ListItem(
+                    headlineContent = { Text(title) },
+                    supportingContent = { Text(subtitle) },
+                    trailingContent = {
+                        RadioButton(
+                            selected = current == mode,
+                            onClick = { onSelect(mode) },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

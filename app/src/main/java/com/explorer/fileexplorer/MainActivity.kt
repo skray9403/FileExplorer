@@ -1,9 +1,12 @@
 package com.explorer.fileexplorer
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +24,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +63,24 @@ class MainActivity : ComponentActivity() {
             }
             val themeMode by themeModeFlow
                 .collectAsStateWithLifecycle(initialValue = ThemeMode.DYNAMIC)
+            val systemDark = isSystemInDarkTheme()
+            val isDark = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK, ThemeMode.OLED -> true
+                ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> systemDark
+            }
+
+            SideEffect {
+                val barStyle = if (isDark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(
+                    statusBarStyle = barStyle,
+                    navigationBarStyle = barStyle,
+                )
+            }
 
             FileExplorerTheme(themeMode = themeMode) {
                 Surface(
@@ -150,3 +172,4 @@ private fun PermissionScreen(
         )
     }
 }
+

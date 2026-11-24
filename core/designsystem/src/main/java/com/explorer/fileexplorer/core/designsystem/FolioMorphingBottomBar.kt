@@ -6,12 +6,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -44,6 +41,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -65,10 +63,14 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material3.FloatingActionButtonMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleFloatingActionButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -123,17 +125,7 @@ private enum class RightPillKind {
     SELECTION_MANAGE,
 }
 
-/**
- * Persistent-container M3 Expressive 3-slot morphing bottom bar.
- *
- * - Outer pill surfaces stay mounted so widths, corners, and colors morph continuously via springs
- *   instead of crossfading separate bars.
- * - Inline search physically expands the left pill to full width while collapsing the right FAB.
- * - Middle Task/Progress pill injects smoothly between Slot 1 & Slot 3 and draws progress fill
- *   in the draw phase inside the surface.
- * - Contextual (+) FAB shares the exact 56.dp baseline and fans M3 Expressive menu pills upward.
- */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FolioMorphingBottomBar(
     selectedDestination: String,
@@ -144,7 +136,9 @@ fun FolioMorphingBottomBar(
 ) {
     val reducedMotion = LocalReducedMotion.current
     var fabMenuExpanded by remember { mutableStateOf(false) }
+    var selectionMoreExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
+    val motionScheme = MaterialTheme.motionScheme
 
     LaunchedEffect(
         selectedDestination,
@@ -154,6 +148,7 @@ fun FolioMorphingBottomBar(
         controller.inlineSearchActive,
     ) {
         fabMenuExpanded = false
+        selectionMoreExpanded = false
     }
 
     val destinations = remember {
@@ -167,6 +162,10 @@ fun FolioMorphingBottomBar(
     val enabledFabActions = remember(controller.fabMenuItems) {
         controller.fabMenuItems.filter { it.enabled }
     }
+    val enabledSelectionMoreActions = remember(controller.selectionMoreItems) {
+        controller.selectionMoreItems.filter { it.enabled }
+    }
+
     val hasFab = enabledFabActions.isNotEmpty()
     val hasTasks = controller.taskBadgeCount > 0 && !controller.selectionMode && !controller.inlineSearchActive
     val compactTabs = hasTasks
@@ -184,23 +183,14 @@ fun FolioMorphingBottomBar(
 
     val triggerSearch: () -> Unit = {
         fabMenuExpanded = false
+        selectionMoreExpanded = false
         controller.onInlineSearchOpen?.invoke() ?: onSearchClick()
     }
 
-    val spatialDpSpec = if (reducedMotion) {
-        tween<Dp>(durationMillis = 80)
-    } else {
-        spring<Dp>(dampingRatio = 0.82f, stiffness = 460f)
-    }
-    val colorSpec = spring<Color>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = 1400f,
-    )
-    val floatSpec = if (reducedMotion) {
-        tween<Float>(durationMillis = 80)
-    } else {
-        spring<Float>(dampingRatio = 0.8f, stiffness = 520f)
-    }
+    val spatialDpSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec<Dp>()
+    val fastSpatialSpec = if (reducedMotion) tween(60) else motionScheme.fastSpatialSpec<Float>()
+    val effectsColorSpec = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Color>()
+    val effectsFloatSpec = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Float>()
 
     val rightContainerTarget = when {
         controller.selectionMode -> colorScheme.surfaceContainerHigh
@@ -212,24 +202,35 @@ fun FolioMorphingBottomBar(
         fabMenuExpanded -> colorScheme.onPrimary
         else -> colorScheme.onPrimaryContainer
     }
-    val rightBg by animateColorAsState(rightContainerTarget, colorSpec, label = "rightPillBg")
-    val rightFg by animateColorAsState(rightContentTarget, colorSpec, label = "rightPillFg")
+    val rightBg by animateColorAsState(rightContainerTarget, effectsColorSpec, label = "rightPillBg")
+    val rightFg by animateColorAsState(rightContentTarget, effectsColorSpec, label = "rightPillFg")
     val fabCornerRadius by animateDpAsState(
         targetValue = if (fabMenuExpanded && !controller.selectionMode) 18.dp else 28.dp,
         animationSpec = spatialDpSpec,
         label = "fabCorner",
     )
 
+    val anyOverlayExpanded = fabMenuExpanded || selectionMoreExpanded
+
     Box(modifier = modifier.fillMaxWidth()) {
-        // Click-outside catcher when FAB menu is open
-        if (fabMenuExpanded) {
+        // Subtle bottom scrim so list content dissolves cleanly behind the floating dock
+        FolioBottomScrim(
+            height = 112.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        // Click-outside scrim when either bottom menu is open
+        if (anyOverlayExpanded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { fabMenuExpanded = false },
+                        onClick = {
+                            fabMenuExpanded = false
+                            selectionMoreExpanded = false
+                        },
                     ),
             )
         }
@@ -243,57 +244,52 @@ fun FolioMorphingBottomBar(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.End,
         ) {
-            // Staggered M3 Expressive FAB menu pills fanning cleanly upward above Slot 3
-            AnimatedVisibility(
-                visible = fabMenuExpanded && hasFab && !controller.selectionMode && !controller.inlineSearchActive,
-                enter = fadeIn(tween(120)) + slideInVertically(tween(180, easing = FastOutSlowInEasing)) { it / 4 },
-                exit = fadeOut(tween(90)) + slideOutVertically(tween(120)) { it / 4 },
-            ) {
-                Column(
-                    modifier = Modifier.padding(bottom = 10.dp),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Selection Mode "More" M3 Expressive Pill Fan-Out (Rename, Share, Open in new/split tab)
+            if (controller.selectionMode && enabledSelectionMoreActions.isNotEmpty()) {
+                FloatingActionButtonMenu(
+                    expanded = selectionMoreExpanded,
+                    button = {},
+                    modifier = Modifier.padding(bottom = if (selectionMoreExpanded) 6.dp else 0.dp),
                 ) {
-                    enabledFabActions.forEach { action ->
-                        Surface(
+                    enabledSelectionMoreActions.forEach { action ->
+                        FloatingActionButtonMenuItem(
                             onClick = {
-                                fabMenuExpanded = false
+                                selectionMoreExpanded = false
                                 action.onClick()
                             },
-                            shape = CircleShape,
-                            color = colorScheme.secondaryContainer,
-                            contentColor = colorScheme.onSecondaryContainer,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier.height(48.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Icon(
-                                    imageVector = action.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Text(
-                                    text = stringResource(action.labelRes),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
+                            text = { Text(stringResource(action.labelRes)) },
+                            icon = { Icon(action.icon, null) },
+                        )
                     }
                 }
             }
 
-            // Independent scroll-to-top bubble above right pill
+            // Normal Mode "+" M3 Expressive Pill Fan-Out (New folder, New file, Mount USB)
+            if (!controller.selectionMode && !controller.inlineSearchActive && hasFab) {
+                FloatingActionButtonMenu(
+                    expanded = fabMenuExpanded,
+                    button = {},
+                    modifier = Modifier.padding(bottom = if (fabMenuExpanded) 6.dp else 0.dp),
+                ) {
+                    enabledFabActions.forEach { action ->
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                fabMenuExpanded = false
+                                action.onClick()
+                            },
+                            text = { Text(stringResource(action.labelRes)) },
+                            icon = { Icon(action.icon, null) },
+                        )
+                    }
+                }
+            }
+
+            // Independent scroll-to-top bubble tucked above Slot 3
             AnimatedVisibility(
                 visible = controller.showScrollToTop &&
                     !controller.selectionMode &&
                     !controller.inlineSearchActive &&
-                    !fabMenuExpanded,
+                    !anyOverlayExpanded,
                 enter = if (reducedMotion) {
                     fadeIn(tween(80))
                 } else {
@@ -328,7 +324,7 @@ fun FolioMorphingBottomBar(
                 }
             }
 
-            // Persistent 3-slot morphing container row (all pills aligned to exact 56.dp baseline)
+            // Persistent 3-slot morphing container row
             BoxWithConstraints(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
@@ -348,41 +344,43 @@ fun FolioMorphingBottomBar(
                 val gap1Target = if (showMiddle) InterPillGap else 0.dp
                 val gap2Target = if (showRight) InterPillGap else 0.dp
 
-                val leftTargetW = when (leftKind) {
-                    LeftPillKind.INLINE_SEARCH -> totalW
-                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE ->
-                        ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp)
-                    LeftPillKind.SUBFOLDER_NAV -> {
-                        val avail = totalW - middleTargetW - rightTargetW - gap1Target - gap2Target
-                        164.dp.coerceAtMost(avail.coerceAtLeast(136.dp))
-                    }
-                    LeftPillKind.ROOT_TABS -> {
-                        val avail = (totalW - middleTargetW - rightTargetW - gap1Target - gap2Target).coerceAtLeast(172.dp)
-                        if (compactTabs) avail.coerceAtMost(212.dp) else avail.coerceAtMost(308.dp)
-                    }
-                }
-
-                val leftWidth by animateDpAsState(leftTargetW, spatialDpSpec, label = "dockLeftW")
                 val middleWidth by animateDpAsState(middleTargetW, spatialDpSpec, label = "dockMidW")
                 val rightWidth by animateDpAsState(rightTargetW, spatialDpSpec, label = "dockRightW")
                 val gap1 by animateDpAsState(gap1Target, spatialDpSpec, label = "dockGap1")
                 val gap2 by animateDpAsState(gap2Target, spatialDpSpec, label = "dockGap2")
-                val middleAlpha by animateFloatAsState(if (showMiddle) 1f else 0f, floatSpec, label = "dockMidA")
-                val rightAlpha by animateFloatAsState(if (showRight) 1f else 0f, floatSpec, label = "dockRightA")
+                val middleAlpha by animateFloatAsState(if (showMiddle) 1f else 0f, effectsFloatSpec, label = "dockMidA")
+                val rightAlpha by animateFloatAsState(if (showRight) 1f else 0f, effectsFloatSpec, label = "dockRightA")
+
+                // Content-hugging modifier for Slot 1 so tabs never leave a dead white gap or clip labels
+                val leftWidthModifier = when (leftKind) {
+                    LeftPillKind.INLINE_SEARCH -> Modifier.fillMaxWidth()
+                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> {
+                        val selW by animateDpAsState(
+                            ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp),
+                            spatialDpSpec,
+                            label = "selLeftW",
+                        )
+                        Modifier.width(selW)
+                    }
+                    LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV -> Modifier
+                        .wrapContentWidth()
+                        .animateContentSize(
+                            animationSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec(),
+                        )
+                }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    // SLOT 1: Persistent Primary Pill (Root Tabs <-> Subfolder <-> Inline Search <-> Selection)
+                    // SLOT 1: Persistent Content-Hugging Primary Pill
                     Surface(
                         shape = CircleShape,
                         color = colorScheme.surfaceContainerHigh,
                         contentColor = colorScheme.onSurface,
                         shadowElevation = 6.dp,
                         border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .width(leftWidth)
+                        modifier = leftWidthModifier
                             .height(PillHeight)
                             .clip(CircleShape),
                     ) {
@@ -390,35 +388,24 @@ fun FolioMorphingBottomBar(
                             targetState = leftKind,
                             transitionSpec = { folioInnerMorphSpec(reducedMotion) },
                             label = "dockLeftContent",
-                            modifier = Modifier.fillMaxSize(),
                         ) { kind ->
                             when (kind) {
                                 LeftPillKind.ROOT_TABS -> {
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxSize()
+                                            .height(PillHeight)
                                             .padding(horizontal = 6.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .animateContentSize(
-                                                    animationSpec = if (reducedMotion) tween(80) else spring(0.82f, 500f),
-                                                ),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                        ) {
-                                            destinations.forEach { dest ->
-                                                FolioMorphTabChip(
-                                                    destination = dest,
-                                                    isSelected = selectedDestination == dest.id,
-                                                    iconOnly = compactTabs,
-                                                    reducedMotion = reducedMotion,
-                                                    onClick = { onDestinationSelected(dest.id) },
-                                                )
-                                            }
+                                        destinations.forEach { dest ->
+                                            FolioMorphTabChip(
+                                                destination = dest,
+                                                isSelected = selectedDestination == dest.id,
+                                                iconOnly = compactTabs,
+                                                reducedMotion = reducedMotion,
+                                                onClick = { onDestinationSelected(dest.id) },
+                                            )
                                         }
                                         FolioIconPillButton(
                                             icon = Icons.Rounded.Search,
@@ -431,10 +418,10 @@ fun FolioMorphingBottomBar(
                                 LeftPillKind.SUBFOLDER_NAV -> {
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxSize()
+                                            .height(PillHeight)
                                             .padding(horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     ) {
                                         FolioIconPillButton(
                                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -513,7 +500,7 @@ fun FolioMorphingBottomBar(
                                             } else {
                                                 colorScheme.surfaceContainerHighest
                                             },
-                                            animationSpec = colorSpec,
+                                            animationSpec = effectsColorSpec,
                                             label = "searchScopeBg",
                                         )
                                         val scopeFg by animateColorAsState(
@@ -522,7 +509,7 @@ fun FolioMorphingBottomBar(
                                             } else {
                                                 colorScheme.onSurfaceVariant
                                             },
-                                            animationSpec = colorSpec,
+                                            animationSpec = effectsColorSpec,
                                             label = "searchScopeFg",
                                         )
                                         Surface(
@@ -659,7 +646,6 @@ fun FolioMorphingBottomBar(
                                 .graphicsLayer { alpha = middleAlpha }
                                 .clip(CircleShape),
                         ) {
-                            // Draw progress fill INSIDE Surface so it renders above Surface's background
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -735,12 +721,12 @@ fun FolioMorphingBottomBar(
                                         val pressed by fabInteraction.collectIsPressedAsState()
                                         val pressScale by animateFloatAsState(
                                             targetValue = if (pressed) 0.90f else 1f,
-                                            animationSpec = MonoSpring.bouncy(),
+                                            animationSpec = fastSpatialSpec,
                                             label = "fabPressScale",
                                         )
                                         val rotation by animateFloatAsState(
                                             targetValue = if (fabMenuExpanded) 45f else 0f,
-                                            animationSpec = if (reducedMotion) tween(80) else MonoSpring.bouncy(),
+                                            animationSpec = fastSpatialSpec,
                                             label = "fabRotation",
                                         )
                                         Box(
@@ -817,18 +803,32 @@ fun FolioMorphingBottomBar(
                                                         .background(colorScheme.outlineVariant.copy(alpha = 0.55f)),
                                                 )
                                             }
+                                            // Selection "More" button fans out M3 Expressive pills (… -> ×)
                                             Row(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .fillMaxHeight()
-                                                    .clickable(onClick = actions.onMore),
+                                                    .clickable(
+                                                        enabled = enabledSelectionMoreActions.isNotEmpty(),
+                                                        onClick = {
+                                                            if (enabledSelectionMoreActions.isNotEmpty()) {
+                                                                selectionMoreExpanded = !selectionMoreExpanded
+                                                            } else {
+                                                                actions.onMore()
+                                                            }
+                                                        },
+                                                    ),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.Center,
                                             ) {
-                                                Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
+                                                Icon(
+                                                    imageVector = if (selectionMoreExpanded) Icons.Rounded.Close else Icons.Rounded.MoreHoriz,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
                                                 Spacer(Modifier.width(4.dp))
                                                 Text(
-                                                    text = stringResource(R.string.more),
+                                                    text = stringResource(if (selectionMoreExpanded) R.string.close else R.string.more),
                                                     maxLines = 1,
                                                     softWrap = false,
                                                     overflow = TextOverflow.Clip,
@@ -848,6 +848,7 @@ fun FolioMorphingBottomBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun FolioMorphTabChip(
     destination: FolioNavDestination,
@@ -857,14 +858,18 @@ private fun FolioMorphTabChip(
     onClick: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val motionScheme = MaterialTheme.motionScheme
+    val effectsColor = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Color>()
+    val fastSpatial = if (reducedMotion) tween(60) else motionScheme.fastSpatialSpec<Float>()
+
     val bg by animateColorAsState(
         targetValue = if (isSelected) colorScheme.secondaryContainer else Color.Transparent,
-        animationSpec = MonoSpring.noBounceColor(),
+        animationSpec = effectsColor,
         label = "tabBg_${destination.id}",
     )
     val fg by animateColorAsState(
         targetValue = if (isSelected) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
-        animationSpec = MonoSpring.noBounceColor(),
+        animationSpec = effectsColor,
         label = "tabFg_${destination.id}",
     )
 
@@ -872,7 +877,7 @@ private fun FolioMorphTabChip(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = if (reducedMotion) tween(60) else MonoSpring.bouncy(),
+        animationSpec = fastSpatial,
         label = "tabScale_${destination.id}",
     )
 
@@ -905,11 +910,11 @@ private fun FolioMorphTabChip(
             AnimatedVisibility(
                 visible = isSelected && !iconOnly,
                 enter = expandHorizontally(
-                    animationSpec = if (reducedMotion) tween(60) else spring(0.82f, 500f),
+                    animationSpec = if (reducedMotion) tween(60) else motionScheme.defaultSpatialSpec(),
                     expandFrom = Alignment.Start,
                 ) + fadeIn(tween(110, delayMillis = 30, easing = LinearEasing)),
                 exit = shrinkHorizontally(
-                    animationSpec = if (reducedMotion) tween(60) else spring(0.82f, 500f),
+                    animationSpec = if (reducedMotion) tween(60) else motionScheme.defaultSpatialSpec(),
                     shrinkTowards = Alignment.Start,
                 ) + fadeOut(tween(70, easing = LinearEasing)),
             ) {
@@ -930,7 +935,7 @@ private fun FolioMorphTabChip(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun FolioIconPillButton(
     icon: ImageVector,
@@ -943,7 +948,7 @@ private fun FolioIconPillButton(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.90f else 1f,
-        animationSpec = MonoSpring.bouncy(),
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "iconBtnScale",
     )
 
@@ -968,15 +973,17 @@ private fun FolioIconPillButton(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun <S> AnimatedContentTransitionScope<S>.folioInnerMorphSpec(reducedMotion: Boolean) =
     if (reducedMotion) {
         fadeIn(tween(70)) togetherWith fadeOut(tween(50))
     } else {
-        (fadeIn(tween(durationMillis = 150, delayMillis = 60, easing = LinearEasing)) +
-            scaleIn(initialScale = 0.94f, animationSpec = tween(150, delayMillis = 60, easing = FastOutSlowInEasing)))
+        (fadeIn(tween(durationMillis = 150, delayMillis = 55, easing = LinearEasing)) +
+            scaleIn(initialScale = 0.94f, animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()))
             .togetherWith(
                 fadeOut(tween(durationMillis = 65, easing = LinearEasing)) +
-                    scaleOut(targetScale = 0.94f, animationSpec = tween(65, easing = FastOutSlowInEasing)),
+                    scaleOut(targetScale = 0.94f, animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()),
             )
             .using(SizeTransform(clip = false))
     }
+

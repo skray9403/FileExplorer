@@ -1,5 +1,15 @@
 package com.explorer.fileexplorer.feature.browser
 
+import com.explorer.fileexplorer.core.data.UsbPathCodec
+import com.explorer.fileexplorer.core.ui.externalClipUris
+import com.explorer.fileexplorer.core.ui.folioDragSource
+import com.explorer.fileexplorer.core.ui.folioDropTarget
+import com.explorer.fileexplorer.core.ui.folioPayloadOrNull
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
@@ -227,7 +237,7 @@ fun BrowserScreen(
     }
 
     var showLocationsSheet by remember { mutableStateOf(false) }
-    var showSelectionMoreSheet by remember { mutableStateOf(false) }
+    var topTabDropHovered by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showTabsSheet by remember { mutableStateOf(false) }
     var breadcrumbExpanded by remember { mutableStateOf(false) }
@@ -346,6 +356,13 @@ fun BrowserScreen(
         }
     }
 
+    val selectedFileObjects = remember(state.files, state.selectedItems) {
+        state.files.filter { it.path in state.selectedItems }
+    }
+    val singleSelectedFolder = selectedFileObjects.singleOrNull()?.takeIf { it.isDirectory }
+    val canHexView = selectedFileObjects.size == 1 && !selectedFileObjects.first().isDirectory
+    val canQueueExtract = state.insideArchive || selectedFileObjects.any { it.isArchive }
+
     LaunchedEffect(
         state.currentPath,
         state.selectedTabIndex,
@@ -360,6 +377,7 @@ fun BrowserScreen(
         state.inlineSearchActive,
         state.inlineSearchQuery,
         state.inlineSearchRecursive,
+        selectedFileObjects,
     ) {
         dockController.claimOwnership("browser")
         dockController.contextResetKey = "${state.currentPath}|${state.selectedTabIndex}|${state.selectionMode}"
@@ -377,8 +395,64 @@ fun BrowserScreen(
             onDelete = viewModel::deleteSelected,
             onPermanentDelete = viewModel::permanentlyDeleteSelected,
             onExtract = { viewModel.extractArchive() },
-            onMore = { showSelectionMoreSheet = true },
+            onMore = {},
         )
+        dockController.selectionMoreItems = buildList {
+            if (!state.insideArchive) {
+                if (selectedFileObjects.size == 1) {
+                    add(
+                        FolioFabMenuAction(
+                            icon = Icons.Rounded.Edit,
+                            labelRes = DesignSystemR.string.rename,
+                            onClick = { selectedFileObjects.firstOrNull()?.let(viewModel::showRename) },
+                        ),
+                    )
+                } else if (selectedFileObjects.size > 1) {
+                    add(
+                        FolioFabMenuAction(
+                            icon = Icons.Rounded.EditNote,
+                            labelRes = DesignSystemR.string.batch_rename,
+                            onClick = viewModel::showBatchRenameDialog,
+                        ),
+                    )
+                }
+                add(
+                    FolioFabMenuAction(
+                        icon = Icons.Rounded.Share,
+                        labelRes = DesignSystemR.string.share,
+                        onClick = viewModel::shareSelected,
+                    ),
+                )
+                singleSelectedFolder?.let { folder ->
+                    add(
+                        FolioFabMenuAction(
+                            icon = Icons.Rounded.FolderOpen,
+                            labelRes = DesignSystemR.string.open_in_new_tab,
+                            onClick = {
+                                viewModel.clearSelection()
+                                viewModel.openTabAt(BrowserPane.PRIMARY, folder.path)
+                            },
+                        ),
+                    )
+                    add(
+                        FolioFabMenuAction(
+                            icon = Icons.Rounded.ViewColumn,
+                            labelRes = DesignSystemR.string.open_in_split_tab,
+                            onClick = { viewModel.openInSplitTab(folder.path) },
+                        ),
+                    )
+                }
+            }
+            if (canQueueExtract) {
+                add(
+                    FolioFabMenuAction(
+                        icon = Icons.Rounded.Unarchive,
+                        labelRes = DesignSystemR.string.queue_extract,
+                        onClick = viewModel::queueExtractSelected,
+                    ),
+                )
+            }
+        }
         dockController.canPaste = state.canPaste
         dockController.onPaste = viewModel::paste
         dockController.onExecuteClipboardTask = if (state.insideArchive) null else viewModel::executeClipboardTask
@@ -459,12 +533,16 @@ fun BrowserScreen(
     val topHeaderHeight = statusBarTop + 60.dp + if (hasPinnedTabs) 44.dp else 0.dp
     val storageFallback = stringResource(DesignSystemR.string.storage)
     val activeFolderTitle = remember(state.currentPath, state.volumes, state.isAtVolumeRoot, storageFallback) {
-        val cleaned = state.currentPath.trimEnd('/')
-        if (state.isAtVolumeRoot) {
-            state.volumes.firstOrNull { it.path.trimEnd('/') == cleaned }?.name
-                ?: cleaned.substringAfterLast('/').ifBlank { storageFallback }
+        if (UsbPathCodec.isUsbPath(state.currentPath)) {
+            UsbPathCodec.name(state.currentPath)?.ifBlank { storageFallback } ?: storageFallback
         } else {
-            cleaned.substringAfterLast('/').ifBlank { storageFallback }
+            val cleaned = state.currentPath.trimEnd('/')
+            if (state.isAtVolumeRoot) {
+                state.volumes.firstOrNull { it.path.trimEnd('/') == cleaned }?.name
+                    ?: cleaned.substringAfterLast('/').ifBlank { storageFallback }
+            } else {
+                cleaned.substringAfterLast('/').ifBlank { storageFallback }
+            }
         }
     }
 
@@ -480,10 +558,12 @@ fun BrowserScreen(
                 .fillMaxSize()
                 .graphicsLayer {
                     val p = backPreviewProgress.coerceIn(0f, 1f)
-                    val scale = 1f - (0.04f * p)
+                    val scale = 1f - (0.055f * p)
                     scaleX = scale
                     scaleY = scale
-                    translationX = 24.dp.toPx() * p
+                    translationX = 32.dp.toPx() * p
+                    shape = RoundedCornerShape(24.dp * p)
+                    clip = p > 0f
                 },
         ) {
             if (!state.dualPaneEnabled && LargeScreenLayoutPolicy.useThreePane(maxWidth.value.toInt())) {
@@ -612,7 +692,22 @@ fun BrowserScreen(
                     PullToRefreshBox(
                         isRefreshing = state.isLoading && page == state.selectedTabIndex,
                         onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .folioDropTarget(
+                                acceptsExternal = true,
+                                shouldStart = { it.externalClipUris().isNotEmpty() },
+                                onDrop = { event ->
+                                    val uris = event.externalClipUris()
+                                    if (uris.isEmpty()) return@folioDropTarget false
+                                    val activity = context as? FragmentActivity
+                                        ?: (context as? android.app.Activity)
+                                    val perm = activity?.requestDragAndDropPermissions(event.toAndroidDragEvent())
+                                    viewModel.importDroppedUris(context, uris)
+                                    perm?.release()
+                                    true
+                                },
+                            ),
                     ) {
                         if (state.viewMode == ViewMode.GRID) {
                             LazyVerticalGrid(
@@ -644,6 +739,32 @@ fun BrowserScreen(
                                             visibleColumns = state.visibleColumns,
                                             onClick = { viewModel.onItemClick(item) },
                                             onLongClick = { viewModel.onItemLongClick(item) },
+                                            modifier = Modifier
+                                                .folioDragSource(
+                                                    enabled = true,
+                                                    context = context,
+                                                    itemsProvider = {
+                                                        if (item.path in state.selectedItems) selectedFileObjects else listOf(item)
+                                                    },
+                                                    sourcePath = state.currentPath,
+                                                )
+                                                .then(
+                                                    if (item.isDirectory && !state.insideArchive) {
+                                                        Modifier.folioDropTarget(
+                                                            acceptsExternal = false,
+                                                            onDrop = { event ->
+                                                                val payload = event.folioPayloadOrNull() ?: return@folioDropTarget false
+                                                                viewModel.requestDrop(
+                                                                    payload.items,
+                                                                    item.path,
+                                                                    BrowserPane.PRIMARY,
+                                                                    BrowserPane.PRIMARY,
+                                                                )
+                                                                true
+                                                            },
+                                                        )
+                                                    } else Modifier,
+                                                ),
                                         )
                                     }
                                 }
@@ -686,6 +807,32 @@ fun BrowserScreen(
                                             onSwipeRight = if (state.swipeRightAction != SwipeAction.NONE) {
                                                 { viewModel.applySwipe(item, state.swipeRightAction) }
                                             } else null,
+                                            modifier = Modifier
+                                                .folioDragSource(
+                                                    enabled = true,
+                                                    context = context,
+                                                    itemsProvider = {
+                                                        if (item.path in state.selectedItems) selectedFileObjects else listOf(item)
+                                                    },
+                                                    sourcePath = state.currentPath,
+                                                )
+                                                .then(
+                                                    if (item.isDirectory && !state.insideArchive) {
+                                                        Modifier.folioDropTarget(
+                                                            acceptsExternal = false,
+                                                            onDrop = { event ->
+                                                                val payload = event.folioPayloadOrNull() ?: return@folioDropTarget false
+                                                                viewModel.requestDrop(
+                                                                    payload.items,
+                                                                    item.path,
+                                                                    BrowserPane.PRIMARY,
+                                                                    BrowserPane.PRIMARY,
+                                                                )
+                                                                true
+                                                            },
+                                                        )
+                                                    } else Modifier,
+                                                ),
                                         )
                                         if (item != pageFiles.lastOrNull()) {
                                             HorizontalDivider(
@@ -730,6 +877,11 @@ fun BrowserScreen(
                 insideArchive = state.insideArchive,
                 canExtract = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_EXTRACTION),
                 canCreateFolder = state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY),
+                canDelete = state.capabilityMatrix.isActionEnabled(RepositoryOperation.DELETE),
+                canCompress = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION),
+                canWatchIntegrity = state.capabilityMatrix.isActionEnabled(RepositoryFeature.CHECKSUMS),
+                canHexView = canHexView,
+                dropHovered = topTabDropHovered,
                 showSortMenu = showSortMenu,
                 sortOrder = state.sortOrder,
                 onToggleBreadcrumbs = { breadcrumbExpanded = !breadcrumbExpanded },
@@ -764,6 +916,35 @@ fun BrowserScreen(
                 onNewFolder = viewModel::showNewFolderDialog,
                 onExtractAll = { viewModel.extractArchive() },
                 onOpenSettings = onOpenSettings,
+                onSendNearby = viewModel::sendNearbySelected,
+                onCast = viewModel::castSelected,
+                onCompress = viewModel::showCompressDialog,
+                onTag = viewModel::showTagDialog,
+                onEncrypt = viewModel::encryptSelected,
+                onDecrypt = viewModel::requestDecryptSelected,
+                onAddToVault = viewModel::requestAddToVaultSelected,
+                onWatchIntegrity = viewModel::watchSelectedIntegrity,
+                onHexView = {
+                    state.files.firstOrNull { it.path in state.selectedItems }
+                        ?.takeIf { !it.isDirectory }
+                        ?.let { onOpenHexEditor(it.path) }
+                },
+                onProperties = {
+                    state.files.firstOrNull { it.path in state.selectedItems }?.let { viewModel.showProperties(it) }
+                },
+                onPermanentDelete = viewModel::permanentlyDeleteSelected,
+                modifier = Modifier.folioDropTarget(
+                    acceptsExternal = false,
+                    shouldStart = { it.folioPayloadOrNull()?.containsOnlyFolders == true },
+                    onHoverChanged = { topTabDropHovered = it },
+                    onDrop = { event ->
+                        val folder = event.folioPayloadOrNull()?.items?.firstOrNull { it.isDirectory }
+                            ?: return@folioDropTarget false
+                        viewModel.clearSelection()
+                        viewModel.openTabAt(BrowserPane.PRIMARY, folder.path)
+                        true
+                    },
+                ),
             )
 
             AnimatedVisibility(
@@ -811,53 +992,7 @@ fun BrowserScreen(
         )
     }
 
-    val selectedFileObjects = remember(state.files, state.selectedItems) {
-        state.files.filter { it.path in state.selectedItems }
-    }
-    val canHexView = selectedFileObjects.size == 1 && !selectedFileObjects.first().isDirectory
-    val canQueueExtract = state.insideArchive || selectedFileObjects.any { it.isArchive }
 
-    if (showSelectionMoreSheet && state.selectionMode) {
-        SelectionMoreBottomSheet(
-            selectedCount = state.selectedCount,
-            insideArchive = state.insideArchive,
-            canDelete = state.capabilityMatrix.isActionEnabled(RepositoryOperation.DELETE),
-            canCompress = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION),
-            canWatchIntegrity = state.capabilityMatrix.isActionEnabled(RepositoryFeature.CHECKSUMS),
-            canHexView = canHexView,
-            canQueueExtract = canQueueExtract,
-            onDismiss = { showSelectionMoreSheet = false },
-            onShare = { showSelectionMoreSheet = false; viewModel.shareSelected() },
-            onSendNearby = { showSelectionMoreSheet = false; viewModel.sendNearbySelected() },
-            onCast = { showSelectionMoreSheet = false; viewModel.castSelected() },
-            onRename = {
-                showSelectionMoreSheet = false
-                state.files.firstOrNull { it.path in state.selectedItems }?.let { viewModel.showRename(it) }
-            },
-            onBatchRename = { showSelectionMoreSheet = false; viewModel.showBatchRenameDialog() },
-            onCompress = { showSelectionMoreSheet = false; viewModel.showCompressDialog() },
-            onTag = { showSelectionMoreSheet = false; viewModel.showTagDialog() },
-            onEncrypt = { showSelectionMoreSheet = false; viewModel.encryptSelected() },
-            onDecrypt = { showSelectionMoreSheet = false; viewModel.requestDecryptSelected() },
-            onAddToVault = { showSelectionMoreSheet = false; viewModel.requestAddToVaultSelected() },
-            onWatchIntegrity = { showSelectionMoreSheet = false; viewModel.watchSelectedIntegrity() },
-            onHexView = {
-                showSelectionMoreSheet = false
-                state.files.firstOrNull { it.path in state.selectedItems }
-                    ?.takeIf { !it.isDirectory }
-                    ?.let { onOpenHexEditor(it.path) }
-            },
-            onQueueExtract = {
-                showSelectionMoreSheet = false
-                viewModel.queueExtractSelected()
-            },
-            onProperties = {
-                showSelectionMoreSheet = false
-                state.files.firstOrNull { it.path in state.selectedItems }?.let { viewModel.showProperties(it) }
-            },
-            onPermanentDelete = { showSelectionMoreSheet = false; viewModel.permanentlyDeleteSelected() },
-        )
-    }
 
     if (state.showNewFolderDialog) {
         InputDialog(
@@ -1046,7 +1181,12 @@ private fun parseTopPathSegments(path: String): List<TopPathSegment> {
     var accumulated = ""
     for (part in parts) {
         accumulated = "$accumulated/$part"
-        segments.add(TopPathSegment(part, accumulated))
+        val displayName = if (UsbPathCodec.isUsbPath(path)) {
+            UsbPathCodec.name(accumulated)?.ifBlank { part } ?: part
+        } else {
+            part
+        }
+        segments.add(TopPathSegment(displayName, accumulated))
     }
     return segments
 }
@@ -1068,6 +1208,11 @@ private fun FloatingBrowserTopBar(
     insideArchive: Boolean,
     canExtract: Boolean,
     canCreateFolder: Boolean,
+    canDelete: Boolean = false,
+    canCompress: Boolean = false,
+    canWatchIntegrity: Boolean = false,
+    canHexView: Boolean = false,
+    dropHovered: Boolean = false,
     showSortMenu: Boolean,
     sortOrder: SortOrder,
     onToggleBreadcrumbs: () -> Unit,
@@ -1088,11 +1233,22 @@ private fun FloatingBrowserTopBar(
     onNewFolder: () -> Unit,
     onExtractAll: () -> Unit,
     onOpenSettings: () -> Unit,
+    onSendNearby: () -> Unit = {},
+    onCast: () -> Unit = {},
+    onCompress: () -> Unit = {},
+    onTag: () -> Unit = {},
+    onEncrypt: () -> Unit = {},
+    onDecrypt: () -> Unit = {},
+    onAddToVault: () -> Unit = {},
+    onWatchIntegrity: () -> Unit = {},
+    onHexView: () -> Unit = {},
+    onProperties: () -> Unit = {},
+    onPermanentDelete: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var moreExpanded by remember { mutableStateOf(false) }
+    var overflowMenuExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
-    // Gallery-app dark-tonal floating bubble shade
     val floatingBubbleColor = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f)
 
     Box(
@@ -1113,7 +1269,7 @@ private fun FloatingBrowserTopBar(
             modifier = Modifier.fillMaxWidth(),
         ) { mode ->
             when (mode) {
-                // Selection Mode Header
+                // Selection Mode Header: [✕ N selected] on left, [Select All] + [⋮ Context Menu] on right
                 0 -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1142,16 +1298,143 @@ private fun FloatingBrowserTopBar(
                             }
                         }
 
-                        Surface(
-                            onClick = onSelectAll,
-                            shape = CircleShape,
-                            color = floatingBubbleColor,
-                            contentColor = colorScheme.onSurface,
-                            shadowElevation = 4.dp,
-                            modifier = Modifier.size(44.dp),
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
+                            Surface(
+                                onClick = onSelectAll,
+                                shape = CircleShape,
+                                color = floatingBubbleColor,
+                                contentColor = colorScheme.onSurface,
+                                shadowElevation = 4.dp,
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
+                                }
+                            }
+
+                            Box {
+                                Surface(
+                                    onClick = { overflowMenuExpanded = true },
+                                    shape = CircleShape,
+                                    color = floatingBubbleColor,
+                                    contentColor = colorScheme.onSurface,
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier.size(44.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more_options), modifier = Modifier.size(20.dp))
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = overflowMenuExpanded,
+                                    onDismissRequest = { overflowMenuExpanded = false },
+                                    shape = RoundedCornerShape(24.dp),
+                                    containerColor = colorScheme.surfaceContainerHigh,
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.send_quick_share)) },
+                                        leadingIcon = { Icon(Icons.Rounded.NearMe, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onSendNearby()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.cast_media)) },
+                                        leadingIcon = { Icon(Icons.Rounded.Cast, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onCast()
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                    if (canCompress) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(DesignSystemR.string.compress)) },
+                                            leadingIcon = { Icon(Icons.Rounded.FolderZip, null) },
+                                            onClick = {
+                                                overflowMenuExpanded = false
+                                                onCompress()
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.set_tags)) },
+                                        leadingIcon = { Icon(Icons.Rounded.Label, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onTag()
+                                        },
+                                    )
+                                    if (canHexView) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(DesignSystemR.string.hex_view)) },
+                                            leadingIcon = { Icon(Icons.Rounded.Code, null) },
+                                            onClick = {
+                                                overflowMenuExpanded = false
+                                                onHexView()
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.properties)) },
+                                        leadingIcon = { Icon(Icons.Rounded.Info, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onProperties()
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.encrypt_files)) },
+                                        leadingIcon = { Icon(Icons.Rounded.Lock, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onEncrypt()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.decrypt_files)) },
+                                        leadingIcon = { Icon(Icons.Rounded.LockOpen, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onDecrypt()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(DesignSystemR.string.add_to_vault)) },
+                                        leadingIcon = { Icon(Icons.Rounded.EnhancedEncryption, null) },
+                                        onClick = {
+                                            overflowMenuExpanded = false
+                                            onAddToVault()
+                                        },
+                                    )
+                                    if (canWatchIntegrity) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(DesignSystemR.string.watch_for_changes)) },
+                                            leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) },
+                                            onClick = {
+                                                overflowMenuExpanded = false
+                                                onWatchIntegrity()
+                                            },
+                                        )
+                                    }
+                                    if (canDelete) {
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(DesignSystemR.string.delete_permanently), color = colorScheme.error) },
+                                            leadingIcon = { Icon(Icons.Rounded.DeleteForever, null, tint = colorScheme.error) },
+                                            onClick = {
+                                                overflowMenuExpanded = false
+                                                onPermanentDelete()
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1226,6 +1509,14 @@ private fun FloatingBrowserTopBar(
                                         modifier = Modifier
                                             .height(32.dp)
                                             .clip(CircleShape)
+                                            .folioDragSource(
+                                                enabled = true,
+                                                context = LocalContext.current,
+                                                itemsProvider = {
+                                                    listOf(FileItem(name = seg.name, path = seg.path, isDirectory = true))
+                                                },
+                                                sourcePath = seg.path,
+                                            )
                                             .combinedClickable(
                                                 onClick = {
                                                     if (!isLast) onNavigateBreadcrumb(seg.path) else onToggleBreadcrumbs()
@@ -1264,7 +1555,6 @@ private fun FloatingBrowserTopBar(
                         }
                     }
                 }
-
                 // Gallery-Style Balanced 3-Element Header: [Left Tab Bubble]  [Centered Folder Pill]  [Right ⋮ Bubble]
                 else -> {
                     Box(
@@ -1318,8 +1608,16 @@ private fun FloatingBrowserTopBar(
                         // Truly Centered Compact Gallery Pill (Single-tap -> expand directory pills, Long-press -> copy path)
                         Surface(
                             shape = CircleShape,
-                            color = if (rootActive) AccentOrange.copy(alpha = 0.24f) else floatingBubbleColor,
-                            contentColor = if (rootActive) AccentOrange else colorScheme.onSurface,
+                            color = when {
+                                dropHovered -> colorScheme.primaryContainer
+                                rootActive -> AccentOrange.copy(alpha = 0.24f)
+                                else -> floatingBubbleColor
+                            },
+                            contentColor = when {
+                                dropHovered -> colorScheme.onPrimaryContainer
+                                rootActive -> AccentOrange
+                                else -> colorScheme.onSurface
+                            },
                             shadowElevation = 4.dp,
                             modifier = Modifier
                                 .padding(horizontal = 56.dp)
@@ -1336,7 +1634,7 @@ private fun FloatingBrowserTopBar(
                                 horizontalArrangement = Arrangement.Center,
                             ) {
                                 Text(
-                                    text = folderTitle,
+                                    text = if (dropHovered) stringResource(DesignSystemR.string.drop_to_open_tab) else folderTitle,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
@@ -1694,123 +1992,6 @@ private fun LocationsBottomSheet(
                             }
                         }
                         Switch(checked = state.rootEnabled, onCheckedChange = { onToggleRoot() })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SelectionMoreBottomSheet(
-    selectedCount: Int,
-    insideArchive: Boolean,
-    canDelete: Boolean,
-    canCompress: Boolean,
-    canWatchIntegrity: Boolean,
-    canHexView: Boolean = false,
-    canQueueExtract: Boolean = false,
-    onDismiss: () -> Unit,
-    onShare: () -> Unit,
-    onSendNearby: () -> Unit,
-    onCast: () -> Unit,
-    onRename: () -> Unit,
-    onBatchRename: () -> Unit,
-    onCompress: () -> Unit,
-    onTag: () -> Unit,
-    onEncrypt: () -> Unit,
-    onDecrypt: () -> Unit,
-    onAddToVault: () -> Unit,
-    onWatchIntegrity: () -> Unit,
-    onHexView: () -> Unit,
-    onQueueExtract: () -> Unit = {},
-    onProperties: () -> Unit,
-    onPermanentDelete: () -> Unit,
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                text = stringResource(DesignSystemR.string.selected_count, selectedCount),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
-
-            if (insideArchive && canQueueExtract) {
-                FolioSegmentedColumn {
-                    FolioSegmentedCard(index = 0, count = 1, onClick = onQueueExtract) {
-                        SheetActionRow(Icons.Rounded.Unarchive, stringResource(DesignSystemR.string.queue_extract), null)
-                    }
-                }
-            }
-
-            if (!insideArchive) {
-                FolioSegmentedColumn {
-                    FolioSegmentedCard(index = 0, count = 3, onClick = onShare) {
-                        SheetActionRow(Icons.Rounded.Share, stringResource(DesignSystemR.string.share), null)
-                    }
-                    FolioSegmentedCard(index = 1, count = 3, onClick = onSendNearby) {
-                        SheetActionRow(Icons.Rounded.NearMe, stringResource(DesignSystemR.string.send_quick_share), null)
-                    }
-                    FolioSegmentedCard(index = 2, count = 3, onClick = onCast) {
-                        SheetActionRow(Icons.Rounded.Cast, stringResource(DesignSystemR.string.cast_media), null)
-                    }
-                }
-
-                FolioSegmentedColumn {
-                    val editRows = buildList<Triple<ImageVector, String, () -> Unit>> {
-                        if (canQueueExtract) add(Triple(Icons.Rounded.Unarchive, stringResource(DesignSystemR.string.queue_extract), onQueueExtract))
-                        if (selectedCount == 1) add(Triple(Icons.Rounded.Edit, stringResource(DesignSystemR.string.rename), onRename))
-                        add(Triple(Icons.Rounded.EditNote, stringResource(DesignSystemR.string.batch_rename), onBatchRename))
-                        if (canCompress) add(Triple(Icons.Rounded.FolderZip, stringResource(DesignSystemR.string.compress), onCompress))
-                        add(Triple(Icons.Rounded.Label, stringResource(DesignSystemR.string.set_tags), onTag))
-                        if (canHexView) add(Triple(Icons.Rounded.Code, stringResource(DesignSystemR.string.hex_view), onHexView))
-                    }
-                    editRows.forEachIndexed { idx, (icon, label, action) ->
-                        FolioSegmentedCard(index = idx, count = editRows.size, onClick = action) {
-                            SheetActionRow(icon, label, null)
-                        }
-                    }
-                }
-
-                FolioSegmentedColumn {
-                    val secRows = buildList<Triple<ImageVector, String, () -> Unit>> {
-                        add(Triple(Icons.Rounded.Lock, stringResource(DesignSystemR.string.encrypt_files), onEncrypt))
-                        add(Triple(Icons.Rounded.LockOpen, stringResource(DesignSystemR.string.decrypt_files), onDecrypt))
-                        add(Triple(Icons.Rounded.EnhancedEncryption, stringResource(DesignSystemR.string.add_to_vault), onAddToVault))
-                        if (canWatchIntegrity) add(Triple(Icons.Rounded.VerifiedUser, stringResource(DesignSystemR.string.watch_for_changes), onWatchIntegrity))
-                    }
-                    secRows.forEachIndexed { idx, (icon, label, action) ->
-                        FolioSegmentedCard(index = idx, count = secRows.size, onClick = action) {
-                            SheetActionRow(icon, label, null)
-                        }
-                    }
-                }
-            }
-
-            FolioSegmentedColumn {
-                val tailCount = if (!insideArchive && canDelete) 2 else 1
-                FolioSegmentedCard(index = 0, count = tailCount, onClick = onProperties) {
-                    SheetActionRow(Icons.Rounded.Info, stringResource(DesignSystemR.string.properties), null)
-                }
-                if (!insideArchive && canDelete) {
-                    FolioSegmentedCard(index = 1, count = tailCount, onClick = onPermanentDelete) {
-                        SheetActionRow(
-                            icon = Icons.Rounded.DeleteForever,
-                            title = stringResource(DesignSystemR.string.delete_permanently),
-                            subtitle = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
                     }
                 }
             }

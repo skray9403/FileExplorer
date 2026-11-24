@@ -27,9 +27,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -50,7 +51,7 @@ import com.explorer.fileexplorer.feature.transfer.TransferConflictAction
 import com.explorer.fileexplorer.feature.transfer.TransferQueueState
 import com.explorer.fileexplorer.feature.transfer.TransferQueueTask
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StackedTaskProgressBottomSheet(
     snapshot: DockTaskSnapshot,
@@ -170,6 +171,7 @@ fun StackedTaskProgressBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TransferTaskItem(
     task: TransferQueueTask,
@@ -237,17 +239,17 @@ private fun TransferTaskItem(
 
             if (task.state == TransferQueueState.RUNNING || task.state == TransferQueueState.PAUSED) {
                 if (task.totalBytes > 0L) {
-                    LinearProgressIndicator(
+                    LinearWavyProgressIndicator(
                         progress = { progress },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp),
+                            .height(10.dp),
                     )
                 } else {
-                    LinearProgressIndicator(
+                    LinearWavyProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp),
+                            .height(10.dp),
                     )
                 }
                 Spacer(Modifier.height(6.dp))

@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.explorer.fileexplorer.core.data.UsbPathCodec
 import com.explorer.fileexplorer.core.designsystem.MonoSpring
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.model.StorageVolume
@@ -56,6 +57,9 @@ internal fun resolveTabLabel(
     volumes: List<StorageVolume>,
     fallbackStorage: String,
 ): String {
+    if (UsbPathCodec.isUsbPath(path)) {
+        return UsbPathCodec.name(path)?.ifBlank { fallbackStorage } ?: fallbackStorage
+    }
     val cleaned = path.trimEnd('/')
     if (cleaned.isEmpty() || cleaned == "/") return "/"
     volumes.firstOrNull { it.path.trimEnd('/') == cleaned }?.let { return it.name }

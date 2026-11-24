@@ -1,6 +1,5 @@
 package com.explorer.fileexplorer.feature.transfer
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,7 +84,6 @@ fun TransferQueueScreen(
     var bandwidthTask by remember { mutableStateOf<TransferQueueTask?>(null) }
     val conflictTask = tasks.firstOrNull { it.state == TransferQueueState.WAITING_CONFLICT && it.conflict != null }
 
-    BackHandler(onBack = onNavigateBack)
     Scaffold(
         topBar = {
             TopAppBar(

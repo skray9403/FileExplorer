@@ -24,10 +24,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Subtle gallery-style vertical gradient scrim behind floating top pills.
- * Keeps content legible under status bar without a heavy opaque band.
- */
 @Composable
 fun FolioTopScrim(
     height: Dp,
@@ -41,8 +37,8 @@ fun FolioTopScrim(
             .background(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to baseColor.copy(alpha = 0.68f),
-                        0.55f to baseColor.copy(alpha = 0.28f),
+                        0.0f to baseColor.copy(alpha = 0.82f),
+                        0.60f to baseColor.copy(alpha = 0.36f),
                         1.0f to Color.Transparent,
                     ),
                 ),
@@ -50,9 +46,28 @@ fun FolioTopScrim(
     )
 }
 
-/**
- * Legacy offscreen alpha feather mask retained for untouched screens (e.g. SecurityScreen).
- */
+@Composable
+fun FolioBottomScrim(
+    height: Dp = 112.dp,
+    modifier: Modifier = Modifier,
+    baseColor: Color = MaterialTheme.colorScheme.background,
+) {
+    Spacer(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.0f to Color.Transparent,
+                        0.45f to baseColor.copy(alpha = 0.42f),
+                        1.0f to baseColor.copy(alpha = 0.88f),
+                    ),
+                ),
+            ),
+    )
+}
+
 fun Modifier.topEdgeFeatherFade(
     opaqueStartDp: Dp = 64.dp,
     fadeHeightDp: Dp = 30.dp,
@@ -140,3 +155,4 @@ fun FolioSectionLabel(
         modifier = modifier.padding(horizontal = 6.dp, vertical = 4.dp),
     )
 }
+
