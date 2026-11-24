@@ -182,6 +182,7 @@ sealed interface BrowserEvent {
     data class OpenFile(val item: FileItem) : BrowserEvent
     data class ShareFiles(val items: List<FileItem>) : BrowserEvent
     data class SendNearbyFiles(val items: List<FileItem>) : BrowserEvent
+    data class RequestEncrypt(val paths: List<String>) : BrowserEvent
     data class RequestDecrypt(val paths: List<String>) : BrowserEvent
     data class RequestVaultAdd(val paths: List<String>) : BrowserEvent
 }
@@ -1639,8 +1640,14 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun encryptSelected() {
+    fun requestEncryptSelected() {
         val paths = _state.value.selectedItems.toList()
+        if (paths.isNotEmpty()) {
+            viewModelScope.launch { _events.emit(BrowserEvent.RequestEncrypt(paths)) }
+        }
+    }
+
+    fun encryptFiles(paths: List<String>) {
         if (paths.isEmpty()) return
         viewModelScope.launch {
             _events.emit(BrowserEvent.Toast("Encrypting..."))
@@ -1651,6 +1658,10 @@ class BrowserViewModel @Inject constructor(
                 refresh()
             }
         }
+    }
+
+    fun encryptSelected() {
+        requestEncryptSelected()
     }
 
     fun requestDecryptSelected() {

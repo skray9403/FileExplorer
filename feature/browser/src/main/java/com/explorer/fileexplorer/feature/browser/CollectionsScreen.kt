@@ -103,18 +103,8 @@ fun CollectionsScreen(
         dockController.onNavigateToRoot = { viewModel.closeCategory() }
         dockController.showScrollToTop = showScrollToTop
         dockController.onScrollToTop = { scope.launch { listState.animateScrollToItem(0) } }
-        dockController.fabMenuItems = listOf(
-            FolioFabMenuAction(
-                icon = Icons.Rounded.Refresh,
-                labelRes = DesignSystemR.string.refresh,
-                onClick = viewModel::refresh,
-            ),
-            FolioFabMenuAction(
-                icon = Icons.Rounded.Search,
-                labelRes = DesignSystemR.string.search,
-                onClick = onOpenSearch,
-            ),
-        )
+        dockController.sortPrimaryItems = emptyList()
+        dockController.fabMenuItems = emptyList()
     }
 
     DisposableEffect(Unit) {

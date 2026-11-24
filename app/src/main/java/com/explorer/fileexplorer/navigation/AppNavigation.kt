@@ -211,7 +211,8 @@ fun AppNavigation(
                 }
 
                 composable(Routes.TOOLS) {
-                    ToolsHubScreen(
+                    SettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
                         onOpenTransfers = { navController.navigate(Routes.TRANSFERS) },
                         onOpenAnalyzer = { navController.navigate(Routes.ANALYZER) },
                         onOpenTrash = { navController.navigate(Routes.TRASH) },
@@ -222,8 +223,6 @@ fun AppNavigation(
                         onOpenSecurity = { navController.navigate(Routes.SECURITY) },
                         onOpenShizuku = { navController.navigate(Routes.SHIZUKU) },
                         onOpenRootModules = { navController.navigate(Routes.ROOT_MODULES) },
-                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                        onOpenSearch = { navController.navigate(Routes.SEARCH) },
                         onOpenNetwork = { navController.navigate(Routes.NETWORK) },
                     )
                 }
@@ -275,7 +274,22 @@ fun AppNavigation(
                         onOpenSearch = { navController.navigate(Routes.SEARCH) },
                     )
                 }
-                composable(Routes.SETTINGS) { SettingsScreen(onNavigateBack = { navController.popBackStack() }) }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenTransfers = { navController.navigate(Routes.TRANSFERS) },
+                        onOpenAnalyzer = { navController.navigate(Routes.ANALYZER) },
+                        onOpenTrash = { navController.navigate(Routes.TRASH) },
+                        onOpenApps = { navController.navigate(Routes.APPS) },
+                        onOpenCloud = { navController.navigate(Routes.CLOUD) },
+                        onOpenServer = { navController.navigate(Routes.SHARE_SERVER) },
+                        onOpenTags = { navController.navigate(Routes.TAGS) },
+                        onOpenSecurity = { navController.navigate(Routes.SECURITY) },
+                        onOpenShizuku = { navController.navigate(Routes.SHIZUKU) },
+                        onOpenRootModules = { navController.navigate(Routes.ROOT_MODULES) },
+                        onOpenNetwork = { navController.navigate(Routes.NETWORK) },
+                    )
+                }
                 composable(Routes.NETWORK) { NetworkScreen(onNavigateBack = { navController.popBackStack() }) }
                 composable(Routes.SHIZUKU) {
                     ShizukuScreen(

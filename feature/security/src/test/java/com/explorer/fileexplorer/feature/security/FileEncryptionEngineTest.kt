@@ -62,4 +62,76 @@ class FileEncryptionEngineTest {
         )
         return encrypted.toByteArray()
     }
+
+
+    @Test
+    fun `encryptEnvelope and decryptAuto round trip with 256-bit KEK`() {
+        val plaintext = "Envelope encrypted test payload with secret data 12345".toByteArray()
+        val originalName = "envelope_secret.pdf"
+        val outEncrypted = ByteArrayOutputStream()
+
+        FileEncryptionEngine.encryptEnvelope(
+            input = ByteArrayInputStream(plaintext),
+            output = outEncrypted,
+            originalName = originalName,
+            kek = key,
+        )
+
+        val encryptedBytes = outEncrypted.toByteArray()
+        val outDecrypted = ByteArrayOutputStream()
+
+        val restoredName = FileEncryptionEngine.decryptAuto(
+            input = ByteArrayInputStream(encryptedBytes),
+            output = outDecrypted,
+            v2KekProvider = { key },
+            v1KeyProvider = { key },
+        )
+
+        assertEquals(originalName, restoredName)
+        assertContentEquals(plaintext, outDecrypted.toByteArray())
+    }
+
+    @Test
+    fun `tampered envelope ciphertext fails authentication`() {
+        val plaintext = "Tamper check payload".toByteArray()
+        val outEncrypted = ByteArrayOutputStream()
+
+        FileEncryptionEngine.encryptEnvelope(
+            input = ByteArrayInputStream(plaintext),
+            output = outEncrypted,
+            originalName = "tamper.txt",
+            kek = key,
+        )
+
+        val encrypted = outEncrypted.toByteArray()
+        // Flip one bit in the payload ciphertext
+        encrypted[encrypted.lastIndex] = (encrypted.last().toInt() xor 0x01).toByte()
+
+        assertFailsWith<Exception> {
+            FileEncryptionEngine.decryptAuto(
+                input = ByteArrayInputStream(encrypted),
+                output = ByteArrayOutputStream(),
+                v2KekProvider = { key },
+                v1KeyProvider = { key },
+            )
+        }
+    }
+
+    @Test
+    fun `legacy v1 payload decrypts via decryptAuto`() {
+        val plaintext = "Legacy v1 payload to verify backward compatibility".toByteArray()
+        val originalName = "legacy_doc.docx"
+        val v1Encrypted = encrypt(plaintext, originalName)
+        val outDecrypted = ByteArrayOutputStream()
+
+        val restoredName = FileEncryptionEngine.decryptAuto(
+            input = ByteArrayInputStream(v1Encrypted),
+            output = outDecrypted,
+            v2KekProvider = { key },
+            v1KeyProvider = { key },
+        )
+
+        assertEquals(originalName, restoredName)
+        assertContentEquals(plaintext, outDecrypted.toByteArray())
+    }
 }

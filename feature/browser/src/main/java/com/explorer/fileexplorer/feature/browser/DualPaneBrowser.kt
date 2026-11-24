@@ -5,21 +5,28 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.model.FileColumn
 import com.explorer.fileexplorer.core.model.FileItem
+import com.explorer.fileexplorer.core.model.StorageVolume
 import com.explorer.fileexplorer.core.ui.BreadcrumbBar
 import com.explorer.fileexplorer.core.ui.FileListItem
 import com.explorer.fileexplorer.core.ui.folioDragSource
@@ -49,69 +56,143 @@ internal fun DualPaneContent(
     onAddTab: (BrowserPane) -> Unit,
     onReorderTabs: (BrowserPane, Int, Int) -> Unit,
     onRequestDrop: (List<FileItem>, String, BrowserPane, BrowserPane) -> Unit,
+    bottomContentPadding: Dp = 124.dp,
 ) {
-    Row(modifier = Modifier.fillMaxSize()) {
-        PanePanel(
-            modifier = Modifier.weight(1f),
-            title = stringResource(DesignSystemR.string.left_pane),
-            path = state.currentPath,
-            files = state.files,
-            isLoading = state.isLoading,
-            error = state.error,
-            selectedItems = state.selectedItems,
-            compactDensity = state.compactDensity,
-            visibleColumns = state.visibleColumns,
-            showDirectorySizes = state.showDirectorySizes,
-            directorySizes = state.directorySizes,
-            directorySizesUnavailable = state.directorySizesUnavailable,
-            tabs = state.tabs,
-            selectedTabIndex = state.selectedTabIndex,
-            onSelectTab = { stateIndex -> onSelectTab(BrowserPane.PRIMARY, stateIndex) },
-            onCloseTab = { stateIndex -> onCloseTab(BrowserPane.PRIMARY, stateIndex) },
-            onAddTab = { onAddTab(BrowserPane.PRIMARY) },
-            onReorderTabs = { from, to -> onReorderTabs(BrowserPane.PRIMARY, from, to) },
-            pane = BrowserPane.PRIMARY,
-            onNavigate = onPrimaryNavigate,
-            onItemClick = onPrimaryItemClick,
-            onItemLongClick = onPrimaryItemLongClick,
-            onSwipeLeft = onPrimarySwipeLeft,
-            onSwipeRight = onPrimarySwipeRight,
-            onNavigateUp = onPrimaryNavigateUp,
-            onRefresh = onPrimaryRefresh,
-            onRequestDrop = onRequestDrop,
-        )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isVerticalSplit = maxWidth < 600.dp
+        if (isVerticalSplit) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                PanePanel(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    path = state.currentPath,
+                    files = state.files,
+                    isLoading = state.isLoading,
+                    error = state.error,
+                    selectedItems = state.selectedItems,
+                    compactDensity = state.compactDensity,
+                    visibleColumns = state.visibleColumns,
+                    showDirectorySizes = state.showDirectorySizes,
+                    directorySizes = state.directorySizes,
+                    directorySizesUnavailable = state.directorySizesUnavailable,
+                    tabs = state.tabs,
+                    selectedTabIndex = state.selectedTabIndex,
+                    volumes = state.volumes,
+                    onSelectTab = { stateIndex -> onSelectTab(BrowserPane.PRIMARY, stateIndex) },
+                    onCloseTab = { stateIndex -> onCloseTab(BrowserPane.PRIMARY, stateIndex) },
+                    onAddTab = { onAddTab(BrowserPane.PRIMARY) },
+                    onReorderTabs = { from, to -> onReorderTabs(BrowserPane.PRIMARY, from, to) },
+                    pane = BrowserPane.PRIMARY,
+                    onNavigate = onPrimaryNavigate,
+                    onItemClick = onPrimaryItemClick,
+                    onItemLongClick = onPrimaryItemLongClick,
+                    onSwipeLeft = onPrimarySwipeLeft,
+                    onSwipeRight = onPrimarySwipeRight,
+                    onNavigateUp = onPrimaryNavigateUp,
+                    onRefresh = onPrimaryRefresh,
+                    onRequestDrop = onRequestDrop,
+                    bottomPadding = 8.dp,
+                )
 
-        VerticalDivider(modifier = Modifier.fillMaxHeight())
+                HorizontalDivider()
 
-        PanePanel(
-            modifier = Modifier.weight(1f),
-            title = stringResource(DesignSystemR.string.right_pane),
-            path = state.secondaryPath,
-            files = state.secondaryFiles,
-            isLoading = state.secondaryIsLoading,
-            error = state.secondaryError,
-            selectedItems = state.secondarySelectedItems,
-            compactDensity = state.compactDensity,
-            visibleColumns = state.visibleColumns,
-            showDirectorySizes = state.showDirectorySizes,
-            directorySizes = state.secondaryDirectorySizes,
-            directorySizesUnavailable = state.secondaryDirectorySizesUnavailable,
-            tabs = state.secondaryTabs,
-            selectedTabIndex = state.secondarySelectedTabIndex,
-            onSelectTab = { stateIndex -> onSelectTab(BrowserPane.SECONDARY, stateIndex) },
-            onCloseTab = { stateIndex -> onCloseTab(BrowserPane.SECONDARY, stateIndex) },
-            onAddTab = { onAddTab(BrowserPane.SECONDARY) },
-            onReorderTabs = { from, to -> onReorderTabs(BrowserPane.SECONDARY, from, to) },
-            pane = BrowserPane.SECONDARY,
-            onNavigate = onSecondaryNavigate,
-            onItemClick = onSecondaryItemClick,
-            onItemLongClick = onSecondaryItemLongClick,
-            onSwipeLeft = onSecondarySwipeLeft,
-            onSwipeRight = onSecondarySwipeRight,
-            onNavigateUp = onSecondaryNavigateUp,
-            onRefresh = onSecondaryRefresh,
-            onRequestDrop = onRequestDrop,
-        )
+                PanePanel(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    path = state.secondaryPath,
+                    files = state.secondaryFiles,
+                    isLoading = state.secondaryIsLoading,
+                    error = state.secondaryError,
+                    selectedItems = state.secondarySelectedItems,
+                    compactDensity = state.compactDensity,
+                    visibleColumns = state.visibleColumns,
+                    showDirectorySizes = state.showDirectorySizes,
+                    directorySizes = state.secondaryDirectorySizes,
+                    directorySizesUnavailable = state.secondaryDirectorySizesUnavailable,
+                    tabs = state.secondaryTabs,
+                    selectedTabIndex = state.secondarySelectedTabIndex,
+                    volumes = state.volumes,
+                    onSelectTab = { stateIndex -> onSelectTab(BrowserPane.SECONDARY, stateIndex) },
+                    onCloseTab = { stateIndex -> onCloseTab(BrowserPane.SECONDARY, stateIndex) },
+                    onAddTab = { onAddTab(BrowserPane.SECONDARY) },
+                    onReorderTabs = { from, to -> onReorderTabs(BrowserPane.SECONDARY, from, to) },
+                    pane = BrowserPane.SECONDARY,
+                    onNavigate = onSecondaryNavigate,
+                    onItemClick = onSecondaryItemClick,
+                    onItemLongClick = onSecondaryItemLongClick,
+                    onSwipeLeft = onSecondarySwipeLeft,
+                    onSwipeRight = onSecondarySwipeRight,
+                    onNavigateUp = onSecondaryNavigateUp,
+                    onRefresh = onSecondaryRefresh,
+                    onRequestDrop = onRequestDrop,
+                    bottomPadding = bottomContentPadding,
+                )
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxSize()) {
+                PanePanel(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    path = state.currentPath,
+                    files = state.files,
+                    isLoading = state.isLoading,
+                    error = state.error,
+                    selectedItems = state.selectedItems,
+                    compactDensity = state.compactDensity,
+                    visibleColumns = state.visibleColumns,
+                    showDirectorySizes = state.showDirectorySizes,
+                    directorySizes = state.directorySizes,
+                    directorySizesUnavailable = state.directorySizesUnavailable,
+                    tabs = state.tabs,
+                    selectedTabIndex = state.selectedTabIndex,
+                    volumes = state.volumes,
+                    onSelectTab = { stateIndex -> onSelectTab(BrowserPane.PRIMARY, stateIndex) },
+                    onCloseTab = { stateIndex -> onCloseTab(BrowserPane.PRIMARY, stateIndex) },
+                    onAddTab = { onAddTab(BrowserPane.PRIMARY) },
+                    onReorderTabs = { from, to -> onReorderTabs(BrowserPane.PRIMARY, from, to) },
+                    pane = BrowserPane.PRIMARY,
+                    onNavigate = onPrimaryNavigate,
+                    onItemClick = onPrimaryItemClick,
+                    onItemLongClick = onPrimaryItemLongClick,
+                    onSwipeLeft = onPrimarySwipeLeft,
+                    onSwipeRight = onPrimarySwipeRight,
+                    onNavigateUp = onPrimaryNavigateUp,
+                    onRefresh = onPrimaryRefresh,
+                    onRequestDrop = onRequestDrop,
+                    bottomPadding = bottomContentPadding,
+                )
+
+                VerticalDivider(modifier = Modifier.fillMaxHeight())
+
+                PanePanel(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    path = state.secondaryPath,
+                    files = state.secondaryFiles,
+                    isLoading = state.secondaryIsLoading,
+                    error = state.secondaryError,
+                    selectedItems = state.secondarySelectedItems,
+                    compactDensity = state.compactDensity,
+                    visibleColumns = state.visibleColumns,
+                    showDirectorySizes = state.showDirectorySizes,
+                    directorySizes = state.secondaryDirectorySizes,
+                    directorySizesUnavailable = state.secondaryDirectorySizesUnavailable,
+                    tabs = state.secondaryTabs,
+                    selectedTabIndex = state.secondarySelectedTabIndex,
+                    volumes = state.volumes,
+                    onSelectTab = { stateIndex -> onSelectTab(BrowserPane.SECONDARY, stateIndex) },
+                    onCloseTab = { stateIndex -> onCloseTab(BrowserPane.SECONDARY, stateIndex) },
+                    onAddTab = { onAddTab(BrowserPane.SECONDARY) },
+                    onReorderTabs = { from, to -> onReorderTabs(BrowserPane.SECONDARY, from, to) },
+                    pane = BrowserPane.SECONDARY,
+                    onNavigate = onSecondaryNavigate,
+                    onItemClick = onSecondaryItemClick,
+                    onItemLongClick = onSecondaryItemLongClick,
+                    onSwipeLeft = onSecondarySwipeLeft,
+                    onSwipeRight = onSecondarySwipeRight,
+                    onNavigateUp = onSecondaryNavigateUp,
+                    onRefresh = onSecondaryRefresh,
+                    onRequestDrop = onRequestDrop,
+                    bottomPadding = bottomContentPadding,
+                )
+            }
+        }
     }
 }
 
@@ -119,7 +200,6 @@ internal fun DualPaneContent(
 @Composable
 private fun PanePanel(
     modifier: Modifier,
-    title: String,
     path: String,
     files: List<FileItem>,
     isLoading: Boolean,
@@ -132,6 +212,7 @@ private fun PanePanel(
     directorySizesUnavailable: Set<String>,
     tabs: List<BrowserTab>,
     selectedTabIndex: Int,
+    volumes: List<StorageVolume>,
     onSelectTab: (Int) -> Unit,
     onCloseTab: (Int) -> Unit,
     onAddTab: () -> Unit,
@@ -145,15 +226,19 @@ private fun PanePanel(
     onNavigateUp: () -> Unit,
     onRefresh: () -> Unit,
     onRequestDrop: (List<FileItem>, String, BrowserPane, BrowserPane) -> Unit,
+    bottomPadding: Dp = 124.dp,
 ) {
     var isDropTarget by remember { mutableStateOf(false) }
     val borderColor = if (isDropTarget) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.outlineVariant
+    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val storageFallback = stringResource(DesignSystemR.string.storage)
+    val folderTitle = remember(path, volumes, storageFallback) {
+        resolveTabLabel(path, volumes, storageFallback)
+    }
 
     Column(
         modifier = modifier
-            .fillMaxHeight()
-            .border(if (isDropTarget) 2.dp else 1.dp, borderColor)
+            .border(if (isDropTarget) 2.dp else 0.5.dp, borderColor)
             .folioDropTarget(
                 acceptsExternal = false,
                 onHoverChanged = { isDropTarget = it },
@@ -165,29 +250,71 @@ private fun PanePanel(
                 },
             ),
     ) {
+        // Compact single header row: folder pill, [↑] up, [↻] refresh, [+] new tab
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, end = 2.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-            IconButton(onClick = onNavigateUp) {
-                Icon(Icons.Filled.ArrowUpward, contentDescription = stringResource(DesignSystemR.string.up_one_folder))
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) {
+                    Text(
+                        text = folderTitle,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Filled.Refresh, contentDescription = stringResource(DesignSystemR.string.refresh_pane))
+
+            IconButton(onClick = onNavigateUp, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowUpward,
+                    contentDescription = stringResource(DesignSystemR.string.up_one_folder),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onRefresh, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = stringResource(DesignSystemR.string.refresh_pane),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onAddTab, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = stringResource(DesignSystemR.string.add_tab),
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
 
-        BrowserTabsBar(
-            tabs = tabs,
-            selectedIndex = selectedTabIndex,
-            onSelect = onSelectTab,
-            onClose = onCloseTab,
-            onAdd = onAddTab,
-            onReorder = onReorderTabs,
-        )
+        // Show tabs bar only when tabs.size > 1
+        if (tabs.size > 1) {
+            BrowserTabsBar(
+                tabs = tabs,
+                selectedIndex = selectedTabIndex,
+                onSelect = onSelectTab,
+                onClose = onCloseTab,
+                onAdd = onAddTab,
+                onReorder = onReorderTabs,
+                volumes = volumes,
+            )
+        }
 
         BreadcrumbBar(currentPath = path, onNavigate = onNavigate)
 
@@ -198,7 +325,7 @@ private fun PanePanel(
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Filled.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
@@ -217,7 +344,10 @@ private fun PanePanel(
             if (files.isEmpty() && !isLoading) {
                 PaneEmptyState(error)
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    contentPadding = PaddingValues(bottom = bottomPadding),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                     items(items = files, key = { it.path }) { item ->
                         FileListItem(
                             item = item,
@@ -250,9 +380,9 @@ private fun PanePanel(
 
 @Composable
 private fun PaneEmptyState(error: String?) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            text = error ?: "Empty folder",
+            text = error ?: stringResource(DesignSystemR.string.empty_directory),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp),

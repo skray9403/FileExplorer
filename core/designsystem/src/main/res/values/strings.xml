@@ -548,4 +548,24 @@
     <string name="drop_to_open_tab">Drop to open in new tab</string>
     <string name="drop_to_transfer">Drop to copy or move here</string>
     <string name="dark_theme_desc">Material 3 dark surfaces</string>
+    <string name="tools_and_settings">Tools &amp; Settings</string>
+    <string name="actions_menu">Actions</string>
+    <string name="view_options">View options</string>
+    <string name="advanced_diagnostics">Diagnostics &amp; Plugins</string>
+    <string name="advanced_diagnostics_desc">Provider capability status and installed plugins</string>
+    <string name="hardware_security_strongbox">Hardware security: StrongBox (Titan M / Secure Element)</string>
+    <string name="hardware_security_tee">Hardware security: TEE (Trusted Execution Environment)</string>
+    <string name="hardware_security_software">Hardware security: Software keystore</string>
+    <string name="invalidate_on_biometric_change">Invalidate keys on new fingerprint</string>
+    <string name="invalidate_on_biometric_change_desc">Permanently destroys new hardware keys if a new fingerprint is enrolled. Existing encrypted files will become unrecoverable if triggered.</string>
+    <string name="key_invalidated_error">Hardware key was invalidated after a biometric change and can no longer decrypt these files.</string>
+    <string name="authenticate_to_encrypt">Authenticate to encrypt selected files</string>
+    <string name="encryption_cancelled">Encryption cancelled: %1$s</string>
+    <string name="unlock_app_title">Unlock Folio</string>
+    <string name="unlock_app_subtitle">Authenticate to access your files</string>
+    <string name="unlock_app_button">Unlock</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_size">Size</string>
+    <string name="sort_date">Date</string>
+    <string name="sort_type">Type</string>
 </resources>

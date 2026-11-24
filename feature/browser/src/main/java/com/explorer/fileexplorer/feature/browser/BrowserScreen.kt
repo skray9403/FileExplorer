@@ -26,6 +26,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
@@ -243,8 +244,9 @@ fun BrowserScreen(
     var breadcrumbExpanded by remember { mutableStateOf(false) }
     var backPreviewProgress by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(state.currentPath, state.selectionMode) {
+    LaunchedEffect(state.currentPath, breadcrumbExpanded, state.inlineSearchActive, state.selectionMode) {
         breadcrumbExpanded = false
+        backPreviewProgress = 0f
     }
 
     val clipboardManager = LocalClipboardManager.current
@@ -309,6 +311,22 @@ fun BrowserScreen(
                 }
                 is BrowserEvent.ShareFiles -> shareFiles(context, event.items)
                 is BrowserEvent.SendNearbyFiles -> sendNearbyFiles(context, event.items)
+                is BrowserEvent.RequestEncrypt -> {
+                    val activity = context as? FragmentActivity
+                    if (activity != null && securityEntryPoint.securityRepository().canUseBiometrics()) {
+                        securityEntryPoint.biometricHelper().showBiometricPrompt(
+                            activity = activity,
+                            title = context.applicationContext.getString(DesignSystemR.string.encrypt_files),
+                            subtitle = context.applicationContext.getString(DesignSystemR.string.authenticate_to_encrypt),
+                            onSuccess = { viewModel.encryptFiles(event.paths) },
+                            onFailure = { reason ->
+                                Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.encryption_cancelled, reason), Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    } else {
+                        viewModel.encryptFiles(event.paths)
+                    }
+                }
                 is BrowserEvent.RequestDecrypt -> {
                     val activity = context as? FragmentActivity
                     if (activity == null) {
@@ -397,25 +415,70 @@ fun BrowserScreen(
             onExtract = { viewModel.extractArchive() },
             onMore = {},
         )
-        dockController.selectionMoreItems = buildList {
+        dockController.sortPrimaryItems = listOf(
+            SortField.NAME,
+            SortField.SIZE,
+            SortField.DATE,
+            SortField.TYPE,
+        ).map { field ->
+            val isSelected = state.sortOrder.field == field
+            val directionIcon = if (isSelected) {
+                if (state.sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward
+                else Icons.Rounded.ArrowDownward
+            } else null
+            val labelRes = when (field) {
+                SortField.NAME -> DesignSystemR.string.sort_name
+                SortField.SIZE -> DesignSystemR.string.sort_size
+                SortField.DATE -> DesignSystemR.string.sort_date
+                SortField.TYPE -> DesignSystemR.string.sort_type
+            }
+            FolioFabMenuAction(
+                icon = if (state.sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                labelRes = labelRes,
+                selected = isSelected,
+                trailingIcon = directionIcon,
+                onClick = {
+                    val newDir = if (isSelected) {
+                        if (state.sortOrder.direction == SortDirection.ASCENDING) SortDirection.DESCENDING
+                        else SortDirection.ASCENDING
+                    } else {
+                        SortDirection.ASCENDING
+                    }
+                    viewModel.setSortOrder(state.sortOrder.copy(field = field, direction = newDir))
+                },
+            )
+        }
+        dockController.sortSecondaryItems = listOf(
+            FolioFabMenuAction(
+                icon = if (state.viewMode == ViewMode.LIST) Icons.Rounded.GridView else Icons.Rounded.ViewList,
+                labelRes = DesignSystemR.string.toggle_view,
+                onClick = viewModel::toggleViewMode,
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.ViewColumn,
+                labelRes = if (state.dualPaneEnabled) DesignSystemR.string.close_dual_pane else DesignSystemR.string.open_dual_pane,
+                onClick = viewModel::toggleDualPane,
+            ),
+        )
+        dockController.selectionPrimaryItems = buildList {
+            if (selectedFileObjects.size == 1) {
+                add(
+                    FolioFabMenuAction(
+                        icon = Icons.Rounded.Edit,
+                        labelRes = DesignSystemR.string.rename,
+                        onClick = { selectedFileObjects.firstOrNull()?.let(viewModel::showRename) },
+                    ),
+                )
+            } else if (selectedFileObjects.size > 1) {
+                add(
+                    FolioFabMenuAction(
+                        icon = Icons.Rounded.EditNote,
+                        labelRes = DesignSystemR.string.batch_rename,
+                        onClick = viewModel::showBatchRenameDialog,
+                    ),
+                )
+            }
             if (!state.insideArchive) {
-                if (selectedFileObjects.size == 1) {
-                    add(
-                        FolioFabMenuAction(
-                            icon = Icons.Rounded.Edit,
-                            labelRes = DesignSystemR.string.rename,
-                            onClick = { selectedFileObjects.firstOrNull()?.let(viewModel::showRename) },
-                        ),
-                    )
-                } else if (selectedFileObjects.size > 1) {
-                    add(
-                        FolioFabMenuAction(
-                            icon = Icons.Rounded.EditNote,
-                            labelRes = DesignSystemR.string.batch_rename,
-                            onClick = viewModel::showBatchRenameDialog,
-                        ),
-                    )
-                }
                 add(
                     FolioFabMenuAction(
                         icon = Icons.Rounded.Share,
@@ -423,6 +486,15 @@ fun BrowserScreen(
                         onClick = viewModel::shareSelected,
                     ),
                 )
+                if (state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION)) {
+                    add(
+                        FolioFabMenuAction(
+                            icon = Icons.Rounded.FolderZip,
+                            labelRes = DesignSystemR.string.compress,
+                            onClick = viewModel::showCompressDialog,
+                        ),
+                    )
+                }
                 singleSelectedFolder?.let { folder ->
                     add(
                         FolioFabMenuAction(
@@ -453,6 +525,28 @@ fun BrowserScreen(
                 )
             }
         }
+        dockController.selectionSecondaryItems = if (!state.insideArchive) {
+            listOf(
+                FolioFabMenuAction(
+                    icon = Icons.Rounded.Lock,
+                    labelRes = DesignSystemR.string.encrypt_files,
+                    onClick = viewModel::requestEncryptSelected,
+                ),
+                FolioFabMenuAction(
+                    icon = Icons.Rounded.LockOpen,
+                    labelRes = DesignSystemR.string.decrypt_files,
+                    onClick = viewModel::requestDecryptSelected,
+                ),
+                FolioFabMenuAction(
+                    icon = Icons.Rounded.EnhancedEncryption,
+                    labelRes = DesignSystemR.string.add_to_vault,
+                    onClick = viewModel::requestAddToVaultSelected,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        dockController.selectionMoreItems = dockController.selectionPrimaryItems
         dockController.canPaste = state.canPaste
         dockController.onPaste = viewModel::paste
         dockController.onExecuteClipboardTask = if (state.insideArchive) null else viewModel::executeClipboardTask
@@ -516,7 +610,6 @@ fun BrowserScreen(
             progress.collect { event ->
                 if (isFolderBack) backPreviewProgress = event.progress
             }
-            backPreviewProgress = 0f
             when {
                 breadcrumbExpanded -> breadcrumbExpanded = false
                 state.inlineSearchActive -> viewModel.closeInlineSearch()
@@ -588,7 +681,7 @@ fun BrowserScreen(
                     )
                 }
             } else if (state.dualPaneEnabled) {
-                Box(modifier = Modifier.fillMaxSize().padding(top = topHeaderHeight, bottom = 96.dp)) {
+                Box(modifier = Modifier.fillMaxSize().padding(top = statusBarTop + 56.dp)) {
                     DualPaneContent(
                         state = state,
                         onPrimaryNavigate = viewModel::navigateTo,
@@ -610,6 +703,7 @@ fun BrowserScreen(
                         onAddTab = viewModel::openTab,
                         onReorderTabs = viewModel::reorderTabs,
                         onRequestDrop = viewModel::requestDrop,
+                        bottomContentPadding = 124.dp,
                     )
                 }
             } else {
@@ -709,6 +803,14 @@ fun BrowserScreen(
                                 },
                             ),
                     ) {
+                        AnimatedContent(
+                            targetState = if (page == state.selectedTabIndex) state.currentPath else "",
+                            transitionSpec = {
+                                (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 12 }).togetherWith(fadeOut(tween(90)))
+                            },
+                            label = "folder_navigation_animation",
+                            modifier = Modifier.fillMaxSize(),
+                        ) { _ ->
                         if (state.viewMode == ViewMode.GRID) {
                             LazyVerticalGrid(
                                 state = pageGridState,
@@ -845,6 +947,7 @@ fun BrowserScreen(
                                 }
                             }
                         }
+                        }
                     }
                 }
             }
@@ -877,27 +980,11 @@ fun BrowserScreen(
                 insideArchive = state.insideArchive,
                 canExtract = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_EXTRACTION),
                 canCreateFolder = state.capabilityMatrix.isActionEnabled(RepositoryOperation.CREATE_DIRECTORY),
-                canDelete = state.capabilityMatrix.isActionEnabled(RepositoryOperation.DELETE),
-                canCompress = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION),
-                canWatchIntegrity = state.capabilityMatrix.isActionEnabled(RepositoryFeature.CHECKSUMS),
-                canHexView = canHexView,
                 dropHovered = topTabDropHovered,
-                showSortMenu = showSortMenu,
-                sortOrder = state.sortOrder,
                 onToggleBreadcrumbs = { breadcrumbExpanded = !breadcrumbExpanded },
                 onNavigateBreadcrumb = { path ->
                     breadcrumbExpanded = false
                     viewModel.navigateTo(path)
-                },
-                onDismissSortMenu = { showSortMenu = false },
-                onSelectSortField = { field ->
-                    val newDir = if (state.sortOrder.field == field) {
-                        if (state.sortOrder.direction == SortDirection.ASCENDING) SortDirection.DESCENDING else SortDirection.ASCENDING
-                    } else {
-                        SortDirection.ASCENDING
-                    }
-                    viewModel.setSortOrder(state.sortOrder.copy(field = field, direction = newDir))
-                    showSortMenu = false
                 },
                 onOpenLocations = {
                     breadcrumbExpanded = false
@@ -908,31 +995,10 @@ fun BrowserScreen(
                 onAddTab = { viewModel.openTab(BrowserPane.PRIMARY) },
                 onClearSelection = viewModel::clearSelection,
                 onSelectAll = viewModel::selectAll,
-                onOpenSortMenu = { showSortMenu = true },
-                onViewToggle = viewModel::toggleViewMode,
                 onToggleHidden = viewModel::toggleHidden,
                 onToggleColumn = viewModel::toggleColumn,
-                onToggleDualPane = viewModel::toggleDualPane,
-                onNewFolder = viewModel::showNewFolderDialog,
                 onExtractAll = { viewModel.extractArchive() },
                 onOpenSettings = onOpenSettings,
-                onSendNearby = viewModel::sendNearbySelected,
-                onCast = viewModel::castSelected,
-                onCompress = viewModel::showCompressDialog,
-                onTag = viewModel::showTagDialog,
-                onEncrypt = viewModel::encryptSelected,
-                onDecrypt = viewModel::requestDecryptSelected,
-                onAddToVault = viewModel::requestAddToVaultSelected,
-                onWatchIntegrity = viewModel::watchSelectedIntegrity,
-                onHexView = {
-                    state.files.firstOrNull { it.path in state.selectedItems }
-                        ?.takeIf { !it.isDirectory }
-                        ?.let { onOpenHexEditor(it.path) }
-                },
-                onProperties = {
-                    state.files.firstOrNull { it.path in state.selectedItems }?.let { viewModel.showProperties(it) }
-                },
-                onPermanentDelete = viewModel::permanentlyDeleteSelected,
                 modifier = Modifier.folioDropTarget(
                     acceptsExternal = false,
                     shouldStart = { it.folioPayloadOrNull()?.containsOnlyFolders == true },
@@ -1208,46 +1274,22 @@ private fun FloatingBrowserTopBar(
     insideArchive: Boolean,
     canExtract: Boolean,
     canCreateFolder: Boolean,
-    canDelete: Boolean = false,
-    canCompress: Boolean = false,
-    canWatchIntegrity: Boolean = false,
-    canHexView: Boolean = false,
     dropHovered: Boolean = false,
-    showSortMenu: Boolean,
-    sortOrder: SortOrder,
     onToggleBreadcrumbs: () -> Unit,
     onNavigateBreadcrumb: (String) -> Unit,
-    onDismissSortMenu: () -> Unit,
-    onSelectSortField: (SortField) -> Unit,
     onOpenLocations: () -> Unit,
     onCopyPath: () -> Unit,
     onOpenTabs: () -> Unit,
     onAddTab: () -> Unit,
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
-    onOpenSortMenu: () -> Unit,
-    onViewToggle: () -> Unit,
     onToggleHidden: () -> Unit,
     onToggleColumn: (FileColumn) -> Unit,
-    onToggleDualPane: () -> Unit,
-    onNewFolder: () -> Unit,
     onExtractAll: () -> Unit,
     onOpenSettings: () -> Unit,
-    onSendNearby: () -> Unit = {},
-    onCast: () -> Unit = {},
-    onCompress: () -> Unit = {},
-    onTag: () -> Unit = {},
-    onEncrypt: () -> Unit = {},
-    onDecrypt: () -> Unit = {},
-    onAddToVault: () -> Unit = {},
-    onWatchIntegrity: () -> Unit = {},
-    onHexView: () -> Unit = {},
-    onProperties: () -> Unit = {},
-    onPermanentDelete: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var moreExpanded by remember { mutableStateOf(false) }
-    var overflowMenuExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
     val floatingBubbleColor = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f)
 
@@ -1269,7 +1311,7 @@ private fun FloatingBrowserTopBar(
             modifier = Modifier.fillMaxWidth(),
         ) { mode ->
             when (mode) {
-                // Selection Mode Header: [✕ N selected] on left, [Select All] + [⋮ Context Menu] on right
+                // Selection Mode Header: [✕ N selected] on left, [Select All] on right
                 0 -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1298,143 +1340,16 @@ private fun FloatingBrowserTopBar(
                             }
                         }
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        Surface(
+                            onClick = onSelectAll,
+                            shape = CircleShape,
+                            color = floatingBubbleColor,
+                            contentColor = colorScheme.onSurface,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.size(44.dp),
                         ) {
-                            Surface(
-                                onClick = onSelectAll,
-                                shape = CircleShape,
-                                color = floatingBubbleColor,
-                                contentColor = colorScheme.onSurface,
-                                shadowElevation = 4.dp,
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
-                                }
-                            }
-
-                            Box {
-                                Surface(
-                                    onClick = { overflowMenuExpanded = true },
-                                    shape = CircleShape,
-                                    color = floatingBubbleColor,
-                                    contentColor = colorScheme.onSurface,
-                                    shadowElevation = 4.dp,
-                                    modifier = Modifier.size(44.dp),
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Rounded.MoreVert, stringResource(DesignSystemR.string.more_options), modifier = Modifier.size(20.dp))
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = overflowMenuExpanded,
-                                    onDismissRequest = { overflowMenuExpanded = false },
-                                    shape = RoundedCornerShape(24.dp),
-                                    containerColor = colorScheme.surfaceContainerHigh,
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.send_quick_share)) },
-                                        leadingIcon = { Icon(Icons.Rounded.NearMe, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onSendNearby()
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.cast_media)) },
-                                        leadingIcon = { Icon(Icons.Rounded.Cast, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onCast()
-                                        },
-                                    )
-                                    HorizontalDivider()
-                                    if (canCompress) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(DesignSystemR.string.compress)) },
-                                            leadingIcon = { Icon(Icons.Rounded.FolderZip, null) },
-                                            onClick = {
-                                                overflowMenuExpanded = false
-                                                onCompress()
-                                            },
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.set_tags)) },
-                                        leadingIcon = { Icon(Icons.Rounded.Label, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onTag()
-                                        },
-                                    )
-                                    if (canHexView) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(DesignSystemR.string.hex_view)) },
-                                            leadingIcon = { Icon(Icons.Rounded.Code, null) },
-                                            onClick = {
-                                                overflowMenuExpanded = false
-                                                onHexView()
-                                            },
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.properties)) },
-                                        leadingIcon = { Icon(Icons.Rounded.Info, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onProperties()
-                                        },
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.encrypt_files)) },
-                                        leadingIcon = { Icon(Icons.Rounded.Lock, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onEncrypt()
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.decrypt_files)) },
-                                        leadingIcon = { Icon(Icons.Rounded.LockOpen, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onDecrypt()
-                                        },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.add_to_vault)) },
-                                        leadingIcon = { Icon(Icons.Rounded.EnhancedEncryption, null) },
-                                        onClick = {
-                                            overflowMenuExpanded = false
-                                            onAddToVault()
-                                        },
-                                    )
-                                    if (canWatchIntegrity) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(DesignSystemR.string.watch_for_changes)) },
-                                            leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) },
-                                            onClick = {
-                                                overflowMenuExpanded = false
-                                                onWatchIntegrity()
-                                            },
-                                        )
-                                    }
-                                    if (canDelete) {
-                                        HorizontalDivider()
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(DesignSystemR.string.delete_permanently), color = colorScheme.error) },
-                                            leadingIcon = { Icon(Icons.Rounded.DeleteForever, null, tint = colorScheme.error) },
-                                            onClick = {
-                                                overflowMenuExpanded = false
-                                                onPermanentDelete()
-                                            },
-                                        )
-                                    }
-                                }
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.SelectAll, stringResource(DesignSystemR.string.select_all), modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -1606,40 +1521,42 @@ private fun FloatingBrowserTopBar(
                         }
 
                         // Truly Centered Compact Gallery Pill (Single-tap -> expand directory pills, Long-press -> copy path)
-                        Surface(
-                            shape = CircleShape,
-                            color = when {
-                                dropHovered -> colorScheme.primaryContainer
-                                rootActive -> AccentOrange.copy(alpha = 0.24f)
-                                else -> floatingBubbleColor
-                            },
-                            contentColor = when {
-                                dropHovered -> colorScheme.onPrimaryContainer
-                                rootActive -> AccentOrange
-                                else -> colorScheme.onSurface
-                            },
-                            shadowElevation = 4.dp,
-                            modifier = Modifier
-                                .padding(horizontal = 56.dp)
-                                .height(44.dp)
-                                .clip(CircleShape)
-                                .combinedClickable(
-                                    onClick = onToggleBreadcrumbs,
-                                    onLongClick = onCopyPath,
-                                ),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
+                        if (!dualPaneEnabled) {
+                            Surface(
+                                shape = CircleShape,
+                                color = when {
+                                    dropHovered -> colorScheme.primaryContainer
+                                    rootActive -> AccentOrange.copy(alpha = 0.24f)
+                                    else -> floatingBubbleColor
+                                },
+                                contentColor = when {
+                                    dropHovered -> colorScheme.onPrimaryContainer
+                                    rootActive -> AccentOrange
+                                    else -> colorScheme.onSurface
+                                },
+                                shadowElevation = 4.dp,
+                                modifier = Modifier
+                                    .padding(horizontal = 56.dp)
+                                    .height(44.dp)
+                                    .clip(CircleShape)
+                                    .combinedClickable(
+                                        onClick = onToggleBreadcrumbs,
+                                        onLongClick = onCopyPath,
+                                    ),
                             ) {
-                                Text(
-                                    text = if (dropHovered) stringResource(DesignSystemR.string.drop_to_open_tab) else folderTitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Text(
+                                        text = if (dropHovered) stringResource(DesignSystemR.string.drop_to_open_tab) else folderTitle,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
 
@@ -1673,30 +1590,6 @@ private fun FloatingBrowserTopBar(
                                     )
                                 }
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(DesignSystemR.string.places)) },
-                                    onClick = { moreExpanded = false; onOpenLocations() },
-                                    leadingIcon = { Icon(Icons.Rounded.Storage, null) },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(DesignSystemR.string.sort)) },
-                                    onClick = { moreExpanded = false; onOpenSortMenu() },
-                                    leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Sort, null) },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(DesignSystemR.string.toggle_view)) },
-                                    onClick = { onViewToggle(); moreExpanded = false },
-                                    leadingIcon = {
-                                        Icon(if (viewMode == ViewMode.LIST) Icons.Rounded.GridView else Icons.Rounded.ViewList, null)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(stringResource(if (dualPaneEnabled) DesignSystemR.string.close_dual_pane else DesignSystemR.string.open_dual_pane))
-                                    },
-                                    onClick = { onToggleDualPane(); moreExpanded = false },
-                                    leadingIcon = { Icon(Icons.Rounded.ViewColumn, null) },
-                                )
-                                DropdownMenuItem(
                                     text = {
                                         Text(stringResource(if (showHidden) DesignSystemR.string.hide_hidden_files else DesignSystemR.string.show_hidden_files_menu))
                                     },
@@ -1712,45 +1605,12 @@ private fun FloatingBrowserTopBar(
                                         trailingIcon = { Checkbox(checked = column in visibleColumns, onCheckedChange = null) },
                                     )
                                 }
-                                if (!insideArchive) {
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(DesignSystemR.string.new_folder)) },
-                                        enabled = canCreateFolder,
-                                        onClick = { onNewFolder(); moreExpanded = false },
-                                        leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
-                                    )
-                                }
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text(stringResource(DesignSystemR.string.settings)) },
                                     onClick = { onOpenSettings(); moreExpanded = false },
                                     leadingIcon = { Icon(Icons.Rounded.Settings, null) },
                                 )
-                            }
-
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = onDismissSortMenu,
-                                shape = RoundedCornerShape(22.dp),
-                                containerColor = colorScheme.surfaceContainerHigh,
-                            ) {
-                                SortField.entries.forEach { field ->
-                                    DropdownMenuItem(
-                                        text = { Text(field.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                        onClick = { onSelectSortField(field) },
-                                        leadingIcon = {
-                                            if (sortOrder.field == field) {
-                                                Icon(
-                                                    if (sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward
-                                                    else Icons.Rounded.ArrowDownward,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
                             }
                         }
                     }

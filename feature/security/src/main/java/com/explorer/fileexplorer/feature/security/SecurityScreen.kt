@@ -108,10 +108,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.topEdgeFeatherFade
+import com.explorer.fileexplorer.core.storage.KeyHardwareLevel
+import com.explorer.fileexplorer.core.storage.StrongBoxKeyFactory
+import androidx.compose.material.icons.rounded.LockReset
+import androidx.activity.compose.PredictiveBackHandler
+import kotlin.coroutines.cancellation.CancellationException
 
 private val Context.securityDataStore by preferencesDataStore("security_prefs")
 
@@ -125,6 +134,7 @@ class SecurityRepository @Inject constructor(
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val VAULT_ENABLED = booleanPreferencesKey("vault_enabled")
         val SECURE_DELETE_ENABLED = booleanPreferencesKey("secure_delete_enabled")
+        val INVALIDATE_ON_BIOMETRIC_CHANGE = booleanPreferencesKey("invalidate_on_biometric_change")
     }
 
     val settings: Flow<SecuritySettings> = context.securityDataStore.data.map { prefs ->
@@ -132,6 +142,7 @@ class SecurityRepository @Inject constructor(
             appLockEnabled = prefs[Keys.APP_LOCK_ENABLED] ?: false,
             vaultEnabled = prefs[Keys.VAULT_ENABLED] ?: false,
             secureDeleteEnabled = prefs[Keys.SECURE_DELETE_ENABLED] ?: false,
+            invalidateKeysOnBiometricChange = prefs[Keys.INVALIDATE_ON_BIOMETRIC_CHANGE] ?: false,
         )
     }
 
@@ -147,6 +158,10 @@ class SecurityRepository @Inject constructor(
         context.securityDataStore.edit { it[Keys.SECURE_DELETE_ENABLED] = enabled }
     }
 
+    suspend fun setInvalidateOnBiometricChange(enabled: Boolean) {
+        context.securityDataStore.edit { it[Keys.INVALIDATE_ON_BIOMETRIC_CHANGE] = enabled }
+    }
+
     /** Check if device supports biometric authentication. */
     fun canUseBiometrics(): Boolean {
         val mgr = BiometricManager.from(context)
@@ -158,6 +173,7 @@ data class SecuritySettings(
     val appLockEnabled: Boolean = false,
     val vaultEnabled: Boolean = false,
     val secureDeleteEnabled: Boolean = false,
+    val invalidateKeysOnBiometricChange: Boolean = false,
 )
 
 // -- Biometric Helper --
@@ -222,22 +238,26 @@ object ChecksumUtil {
 @Singleton
 class VaultManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val securityRepository: SecurityRepository,
 ) {
     private val vaultDir: File get() = File(context.filesDir, ".vault")
     private val indexFile: File get() = File(vaultDir, INDEX_NAME)
+    private val masterKeyFile: File get() = File(vaultDir, MASTER_KEY_NAME)
 
     private companion object {
-        const val KEYSTORE_ALIAS = "file_explorer_vault_v2"
+        const val KEYSTORE_ALIAS_V2 = "file_explorer_vault_v2"
+        const val KEYSTORE_ALIAS_V3_STRONGBOX = "file_explorer_vault_kek_v3_sb"
+        const val MASTER_KEY_NAME = "master.key.v3"
         const val INDEX_NAME = "index.v1"
         const val TEMP_PREFIX = ".fileexplorer-vault-"
     }
 
-    private fun getOrCreateKey(): javax.crypto.SecretKey {
+    private fun getLegacyV2Key(): javax.crypto.SecretKey {
         val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
         ks.load(null)
-        ks.getKey(KEYSTORE_ALIAS, null)?.let { return it as javax.crypto.SecretKey }
+        ks.getKey(KEYSTORE_ALIAS_V2, null)?.let { return it as javax.crypto.SecretKey }
         val spec = android.security.keystore.KeyGenParameterSpec.Builder(
-            KEYSTORE_ALIAS,
+            KEYSTORE_ALIAS_V2,
             android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
         )
             .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
@@ -251,6 +271,38 @@ class VaultManager @Inject constructor(
         return keygen.generateKey()
     }
 
+    private fun writeMasterKey(dekBytes: ByteArray, kek: javax.crypto.SecretKey) {
+        val wrapCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.ENCRYPT_MODE, kek)
+        }
+        val wrapIv = wrapCipher.iv
+        val wrappedBytes = wrapCipher.doFinal(dekBytes)
+        val temporary = File(vaultDir, TEMP_PREFIX + UUID.randomUUID() + ".master.tmp")
+        try {
+            FileOutputStream(temporary, false).use { out ->
+                out.write(wrapIv.size and 0xff)
+                out.write(wrapIv)
+                out.write(wrappedBytes)
+                out.fd.sync()
+            }
+            moveIntoPlace(temporary, masterKeyFile)
+        } finally {
+            runCatching { Files.deleteIfExists(temporary.toPath()) }
+        }
+    }
+
+    private fun unwrapMasterKey(bytes: ByteArray, kek: javax.crypto.SecretKey): ByteArray {
+        require(bytes.isNotEmpty()) { "Master key file is empty" }
+        val wrapIvLen = bytes[0].toInt() and 0xff
+        require(wrapIvLen in 1..32 && bytes.size > 1 + wrapIvLen) { "Invalid master key file header" }
+        val wrapIv = bytes.copyOfRange(1, 1 + wrapIvLen)
+        val wrappedBytes = bytes.copyOfRange(1 + wrapIvLen, bytes.size)
+        val unwrapCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.DECRYPT_MODE, kek, javax.crypto.spec.GCMParameterSpec(128, wrapIv))
+        }
+        return unwrapCipher.doFinal(wrappedBytes)
+    }
+
     /**
      * Opens a vault session. The caller must invoke this only after the configured
      * biometric/device-credential gate has completed successfully.
@@ -258,9 +310,36 @@ class VaultManager @Inject constructor(
     suspend fun unlock(): Result<VaultSession> = withContext(Dispatchers.IO) {
         runCatching {
             ensureVaultDirectory()
-            val key = getOrCreateKey()
-            readRecords(key)
-            VaultSession(key)
+            val hasMasterKey = Files.exists(masterKeyFile.toPath(), LinkOption.NOFOLLOW_LINKS)
+            val hasLegacyIndex = Files.exists(indexFile.toPath(), LinkOption.NOFOLLOW_LINKS)
+            if (!hasMasterKey && hasLegacyIndex) {
+                val legacyKey = getLegacyV2Key()
+                readRecords(legacyKey)
+                return@runCatching VaultSession(legacyKey)
+            }
+            val invalidateOnChange = securityRepository.settings.first().invalidateKeysOnBiometricChange
+            val kek = StrongBoxKeyFactory.getOrCreateAesGcmKey(
+                context = context,
+                alias = KEYSTORE_ALIAS_V3_STRONGBOX,
+                requireUserAuth = true,
+                authValiditySeconds = 15,
+                invalidateOnNewBiometric = invalidateOnChange,
+            )
+            val dekBytes = if (hasMasterKey) {
+                unwrapMasterKey(masterKeyFile.readBytes(), kek)
+            } else {
+                ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.also { freshDek ->
+                    writeMasterKey(freshDek, kek)
+                }
+            }
+            val dek = javax.crypto.spec.SecretKeySpec(dekBytes, "AES")
+            try {
+                readRecords(dek)
+                VaultSession(dek, dekBytes)
+            } catch (error: Throwable) {
+                dekBytes.fill(0)
+                throw error
+            }
         }
     }
 
@@ -397,7 +476,9 @@ class VaultManager @Inject constructor(
         ensureVaultDirectory()
         val files = vaultDir.listFiles().orEmpty()
         val unexpected = files.filter { file ->
-            file.name != INDEX_NAME && !file.name.startsWith(TEMP_PREFIX) &&
+            file.name != INDEX_NAME &&
+                file.name != MASTER_KEY_NAME &&
+                !file.name.startsWith(TEMP_PREFIX) &&
                 !file.name.endsWith(VaultFilePolicy.PAYLOAD_SUFFIX)
         }
         require(unexpected.isEmpty()) { "Unrecognized vault storage entry" }
@@ -470,6 +551,7 @@ class VaultManager @Inject constructor(
 data class SecurityUiState(
     val settings: SecuritySettings = SecuritySettings(),
     val canUseBiometrics: Boolean = false,
+    val hardwareLevel: KeyHardwareLevel = KeyHardwareLevel.TEE,
     val vaultEntries: List<VaultEntry> = emptyList(),
     val vaultUnlocked: Boolean = false,
     val isVaultBusy: Boolean = false,
@@ -486,6 +568,7 @@ data class SecurityUiState(
 
 @HiltViewModel
 class SecurityViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val securityRepo: SecurityRepository,
     private val vaultManager: VaultManager,
     private val integrityRepository: IntegrityRepository,
@@ -501,7 +584,8 @@ class SecurityViewModel @Inject constructor(
     private var vaultSession: VaultSession? = null
 
     init {
-        _state.update { it.copy(canUseBiometrics = securityRepo.canUseBiometrics()) }
+        val hwLevel = StrongBoxKeyFactory.inspectHardwareLevel(context, "file_explorer_vault_kek_v3_sb")
+        _state.update { it.copy(canUseBiometrics = securityRepo.canUseBiometrics(), hardwareLevel = hwLevel) }
         viewModelScope.launch {
             securityRepo.settings.collect { settings ->
                 _state.update { it.copy(settings = settings) }
@@ -517,6 +601,11 @@ class SecurityViewModel @Inject constructor(
     }
 
     fun toggleAppLock() { viewModelScope.launch { securityRepo.setAppLock(!_state.value.settings.appLockEnabled) } }
+    fun toggleInvalidateOnBiometricChange() {
+        viewModelScope.launch {
+            securityRepo.setInvalidateOnBiometricChange(!_state.value.settings.invalidateKeysOnBiometricChange)
+        }
+    }
     fun toggleVault() {
         val enabled = !_state.value.settings.vaultEnabled
         if (enabled && !_state.value.canUseBiometrics) {
@@ -552,12 +641,22 @@ class SecurityViewModel @Inject constructor(
                         .onFailure { error ->
                             vaultManager.lock(session)
                             _state.update { it.copy(isVaultBusy = false) }
-                            _toasts.emit("Vault unlock failed: ${error.message}")
+                            val msg = if (StrongBoxKeyFactory.isKeyInvalidated(error)) {
+                                context.getString(DesignSystemR.string.key_invalidated_error)
+                            } else {
+                                "Vault unlock failed: ${error.message}"
+                            }
+                            _toasts.emit(msg)
                         }
                 }
                 .onFailure { error ->
                     _state.update { it.copy(isVaultBusy = false) }
-                    _toasts.emit("Vault unlock failed: ${error.message}")
+                    val msg = if (StrongBoxKeyFactory.isKeyInvalidated(error)) {
+                        context.getString(DesignSystemR.string.key_invalidated_error)
+                    } else {
+                        "Vault unlock failed: ${error.message}"
+                    }
+                    _toasts.emit(msg)
                 }
         }
     }
@@ -752,6 +851,16 @@ fun SecurityScreen(
         )
     }
     var showIntegrityPathDialog by remember { mutableStateOf(false) }
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler(enabled = true) { progress ->
+        try {
+            progress.collect { backProgress = it.progress }
+            onNavigateBack()
+        } catch (_: CancellationException) {
+            backProgress = 0f
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
     DisposableEffect(Unit) { onDispose { viewModel.lockVault() } }
@@ -795,42 +904,60 @@ fun SecurityScreen(
     }
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerHeight = statusBarTop + 56.dp
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                val scale = 1f - (backProgress * 0.05f)
+                scaleX = scale
+                scaleY = scale
+            }
             .background(MaterialTheme.colorScheme.background),
     ) {
         LazyColumn(
             contentPadding = PaddingValues(
-                top = headerHeight + 12.dp,
-                bottom = 48.dp,
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
                 start = 16.dp,
                 end = 16.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .topEdgeFeatherFade(opaqueStartDp = headerHeight - 8.dp, fadeHeightDp = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
         ) {
+            item(key = "sec_headline") {
+                FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.security))
+            }
+
             // App Lock
             item(key = "sec_app_lock") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     FolioSectionLabel(stringResource(DesignSystemR.string.app_lock))
-                    FolioSegmentedCard(index = 0, count = 1) {
-                        SecuritySwitchRow(
-                            icon = Icons.Rounded.Fingerprint,
-                            title = stringResource(DesignSystemR.string.biometric_lock),
-                            subtitle = if (state.canUseBiometrics) {
-                                stringResource(DesignSystemR.string.require_biometric)
-                            } else {
-                                stringResource(DesignSystemR.string.biometrics_unavailable)
-                            },
-                            checked = state.settings.appLockEnabled,
-                            enabled = state.canUseBiometrics,
-                            onCheckedChange = { viewModel.toggleAppLock() },
-                        )
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 2) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.Fingerprint,
+                                title = stringResource(DesignSystemR.string.biometric_lock),
+                                subtitle = if (state.canUseBiometrics) {
+                                    stringResource(DesignSystemR.string.require_biometric)
+                                } else {
+                                    stringResource(DesignSystemR.string.biometrics_unavailable)
+                                },
+                                checked = state.settings.appLockEnabled,
+                                enabled = state.canUseBiometrics,
+                                onCheckedChange = { viewModel.toggleAppLock() },
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 2) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.LockReset,
+                                title = stringResource(DesignSystemR.string.invalidate_on_biometric_change),
+                                subtitle = stringResource(DesignSystemR.string.invalidate_on_biometric_change_desc),
+                                checked = state.settings.invalidateKeysOnBiometricChange,
+                                enabled = state.canUseBiometrics,
+                                onCheckedChange = { viewModel.toggleInvalidateOnBiometricChange() },
+                            )
+                        }
                     }
                 }
             }
@@ -1059,11 +1186,16 @@ fun SecurityScreen(
             item(key = "sec_about") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     FolioSectionLabel(stringResource(DesignSystemR.string.about))
+                    val hwStatus = when (state.hardwareLevel) {
+                        KeyHardwareLevel.STRONGBOX -> stringResource(DesignSystemR.string.hardware_security_strongbox)
+                        KeyHardwareLevel.TEE -> stringResource(DesignSystemR.string.hardware_security_tee)
+                        KeyHardwareLevel.SOFTWARE -> stringResource(DesignSystemR.string.hardware_security_software)
+                    }
                     FolioSegmentedCard(index = 0, count = 1) {
                         SecurityStaticRow(
                             icon = Icons.Rounded.Info,
                             title = stringResource(DesignSystemR.string.security_model),
-                            subtitle = stringResource(DesignSystemR.string.security_model_description) +
+                            subtitle = "$hwStatus\n\n" + stringResource(DesignSystemR.string.security_model_description) +
                                 " Secure delete uses DoD 5220.22-M 3-pass overwrite. Checksums computed using java.security.MessageDigest.",
                         )
                     }
@@ -1071,33 +1203,20 @@ fun SecurityScreen(
             }
         }
 
-        // Transparent Floating Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Transparent)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-                .align(Alignment.TopCenter),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                onClick = onNavigateBack,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(DesignSystemR.string.back), modifier = Modifier.size(20.dp))
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = stringResource(DesignSystemR.string.security),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        FolioBottomScrim(
+            height = 112.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.security),
+            onNavigateBack = onNavigateBack,
+            onFabClick = null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 

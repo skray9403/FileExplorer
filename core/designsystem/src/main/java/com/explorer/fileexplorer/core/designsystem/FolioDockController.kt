@@ -12,6 +12,8 @@ data class FolioFabMenuAction(
     val icon: ImageVector,
     @StringRes val labelRes: Int,
     val enabled: Boolean = true,
+    val selected: Boolean = false,
+    val trailingIcon: ImageVector? = null,
     val onClick: () -> Unit,
 )
 
@@ -42,7 +44,12 @@ class FolioDockController {
 
     var selectionMode by mutableStateOf(false)
     var selectionActions by mutableStateOf(FolioSelectionDockActions())
-    var selectionMoreItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
+    var selectionPrimaryItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
+    var selectionSecondaryItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
+
+    // Contextual Sort / View switchable popup in bottom bar (replaces Tools tab)
+    var sortPrimaryItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
+    var sortSecondaryItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
 
     var isSubfolder by mutableStateOf(false)
     var onNavigateUp by mutableStateOf<() -> Unit>({})
@@ -86,7 +93,10 @@ class FolioDockController {
         onScrollToTop = {}
         selectionMode = false
         selectionActions = FolioSelectionDockActions()
-        selectionMoreItems = emptyList()
+        selectionPrimaryItems = emptyList()
+        selectionSecondaryItems = emptyList()
+        sortPrimaryItems = emptyList()
+        sortSecondaryItems = emptyList()
         canPaste = false
         onPaste = {}
         canCreatePrimaryAction = true
@@ -111,4 +121,3 @@ class FolioDockController {
 val LocalFolioDockController = compositionLocalOf<FolioDockController> {
     FolioDockController()
 }
-

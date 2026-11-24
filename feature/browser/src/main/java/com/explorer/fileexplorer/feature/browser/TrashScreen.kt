@@ -2,7 +2,14 @@ package com.explorer.fileexplorer.feature.browser
 
 import android.os.Environment
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import kotlin.coroutines.cancellation.CancellationException
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -202,60 +209,56 @@ fun TrashScreen(
         }
     }
 
-    BackHandler(enabled = state.selectionMode) {
-        viewModel.clearSelection()
+    PredictiveBackHandler(enabled = true) { progress ->
+        try {
+            progress.collect {}
+            if (state.selectionMode) viewModel.clearSelection() else onNavigateBack()
+        } catch (_: CancellationException) {}
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(if (state.selectionMode) {
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
+                start = 16.dp,
+                end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "trash_headline") {
+                FolioSubScreenHeadline(
+                    title = if (state.selectionMode) {
                         stringResource(DesignSystemR.string.selected_count, state.selectedCount)
                     } else {
                         stringResource(DesignSystemR.string.trash)
-                    })
-                },
-                navigationIcon = {
-                    IconButton(onClick = if (state.selectionMode) viewModel::clearSelection else onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back))
                     }
-                },
-                actions = {
-                    if (state.selectionMode) {
-                        IconButton(onClick = viewModel::restoreSelected) {
-                            Icon(Icons.Filled.RestoreFromTrash, stringResource(DesignSystemR.string.restore))
-                        }
-                        IconButton(onClick = viewModel::deleteSelectedPermanently) {
-                            Icon(Icons.Filled.DeleteForever, stringResource(DesignSystemR.string.delete_permanently))
-                        }
-                    } else {
-                        IconButton(onClick = viewModel::refresh) {
-                            Icon(Icons.Filled.Refresh, stringResource(DesignSystemR.string.refresh))
-                        }
-                        if (state.items.isNotEmpty()) {
-                            IconButton(onClick = viewModel::emptyTrash) {
-                            Icon(Icons.Filled.DeleteSweep, stringResource(DesignSystemR.string.empty_trash))
-                            }
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.auto_purge_after_days, state.ttlDays)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.change_retention_settings)) },
-            )
-            if (state.isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                )
             }
-            HorizontalDivider()
+
+            item(key = "trash_info") {
+                ListItem(
+                    headlineContent = { Text(stringResource(DesignSystemR.string.auto_purge_after_days, state.ttlDays)) },
+                    supportingContent = { Text(stringResource(DesignSystemR.string.change_retention_settings)) },
+                )
+            }
+
+            if (state.isLoading) {
+                item(key = "trash_loading") {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
 
             when {
-                state.items.isEmpty() && !state.isLoading -> EmptyTrashState(state.error)
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                state.items.isEmpty() && !state.isLoading -> item(key = "trash_empty") { EmptyTrashState(state.error) }
+                else -> {
                     items(items = state.items, key = { it.id }) { item ->
                         TrashListItem(
                             item = item,
@@ -268,6 +271,29 @@ fun TrashScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = if (state.selectionMode) {
+                stringResource(DesignSystemR.string.selected_count, state.selectedCount)
+            } else {
+                stringResource(DesignSystemR.string.trash)
+            },
+            onNavigateBack = if (state.selectionMode) viewModel::clearSelection else onNavigateBack,
+            onFabClick = if (state.selectionMode) viewModel::restoreSelected else null,
+            fabIcon = Icons.Filled.RestoreFromTrash,
+            fabContentDescription = stringResource(DesignSystemR.string.restore),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 

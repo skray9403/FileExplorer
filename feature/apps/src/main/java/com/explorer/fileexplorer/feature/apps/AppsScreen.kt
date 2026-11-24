@@ -29,6 +29,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import androidx.activity.compose.PredictiveBackHandler
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import kotlin.coroutines.cancellation.CancellationException
+
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
@@ -252,64 +262,106 @@ fun AppsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var backProgress by remember { mutableFloatStateOf(0f) }
+
+    PredictiveBackHandler(enabled = true) { progress ->
+        try {
+            progress.collect { backProgress = it.progress }
+            onNavigateBack()
+        } catch (_: CancellationException) {
+            backProgress = 0f
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.apps_count, state.appCount)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } },
-                actions = {
-                    var sortExpanded by remember { mutableStateOf(false) }
-                    IconButton(onClick = { sortExpanded = true }) { Icon(Icons.AutoMirrored.Filled.Sort, stringResource(DesignSystemR.string.sort)) }
-                    DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
-                        AppSort.entries.forEach { sort ->
-                            DropdownMenuItem(
-                                text = { Text(sort.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) },
-                                onClick = { viewModel.setSort(sort); sortExpanded = false },
-                                trailingIcon = {
-                                    if (state.sort == sort) Icon(
-                                        if (state.sortAsc) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
-                                        null, modifier = Modifier.size(16.dp))
-                                })
-                        }
-                    }
-                    IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(DesignSystemR.string.refresh)) }
-                },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.padding(padding)) {
-            // Search
-            OutlinedTextField(value = state.searchQuery, onValueChange = viewModel::setSearch,
-                placeholder = { Text(stringResource(DesignSystemR.string.search_apps_hint)) }, singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-            // Filter chips
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppFilter.entries.forEach { filter ->
-                    FilterChip(selected = state.filter == filter,
-                        onClick = { viewModel.setFilter(filter) },
-                        label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) })
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
+                start = 16.dp,
+                end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "apps_headline") {
+                FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.apps_count, state.appCount))
+            }
+
+            item(key = "apps_filters") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = state.filter == filter,
+                            onClick = { viewModel.setFilter(filter) },
+                            label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
             if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                item(key = "apps_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(state.filteredApps, key = { it.packageName }) { app ->
-                        AppListItem(app = app,
-                            onOpen = { viewModel.openApp(app.packageName) },
-                            onDetails = { viewModel.showDetails(app) })
+                item(key = "apps_list") {
+                    FolioSegmentedColumn {
+                        state.filteredApps.forEachIndexed { index, app ->
+                            FolioSegmentedCard(
+                                index = index,
+                                count = state.filteredApps.size,
+                                onClick = { viewModel.showDetails(app) },
+                            ) {
+                                AppListItem(
+                                    app = app,
+                                    onOpen = { viewModel.openApp(app.packageName) },
+                                    onDetails = { viewModel.showDetails(app) },
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.app_manager),
+            onNavigateBack = onNavigateBack,
+            searchQuery = state.searchQuery,
+            searchHint = stringResource(DesignSystemR.string.search_apps_hint),
+            onSearchQueryChange = viewModel::setSearch,
+            onFabClick = null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     // App details sheet
