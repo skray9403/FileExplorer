@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AdminPanelSettings
@@ -28,12 +30,14 @@ import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.WifiTethering
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,25 +50,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.explorer.fileexplorer.core.designsystem.FolioFabMenuAction
 import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
-import com.explorer.fileexplorer.core.designsystem.rememberScrollVelocityConnection
 import kotlinx.coroutines.launch
 
-/**
- * Clean M3 Expressive Hub replacing the legacy hamburger navigation drawer.
- * Houses every advanced tool (Transfers, Analyzer, Trash, Apps, Cloud, Share Server,
- * Tags, Security & Vault, Shizuku, Root Modules, Settings) in Pixel-style segmented stacks.
- */
 @Composable
 fun ToolsHubScreen(
     onOpenTransfers: () -> Unit,
@@ -93,27 +91,23 @@ fun ToolsHubScreen(
         }
     }
 
-    val scrollConnection = rememberScrollVelocityConnection(
-        velocityThresholdDpPerSec = 600f,
-        onFastScrollDown = { dockController.onFastScrollDown() },
-        onFastScrollUp = { dockController.onFastScrollUp() },
-    )
-
     LaunchedEffect(showScrollToTop) {
+        dockController.claimOwnership("tools")
+        dockController.contextResetKey = "tools"
         dockController.showScrollToTop = showScrollToTop
         dockController.onScrollToTop = { scope.launch { listState.animateScrollToItem(0) } }
-        dockController.canCreatePrimaryAction = true
-        dockController.onPrimaryAction = onOpenSearch
-    }
-
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
-        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 15) {
-            dockController.resetScrollMorph()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        dockController.claimOwnership("tools")
+        dockController.fabMenuItems = listOf(
+            FolioFabMenuAction(
+                icon = Icons.Rounded.Search,
+                labelRes = DesignSystemR.string.search,
+                onClick = onOpenSearch,
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.Settings,
+                labelRes = DesignSystemR.string.settings,
+                onClick = onOpenSettings,
+            ),
+        )
     }
 
     DisposableEffect(Unit) {
@@ -121,19 +115,19 @@ fun ToolsHubScreen(
     }
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerHeight = statusBarTop + 56.dp
+    val headerHeight = statusBarTop + 60.dp
+    val floatingBubbleColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.94f)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(scrollConnection),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                top = headerHeight + 12.dp,
-                bottom = 140.dp,
+                top = headerHeight + 8.dp,
+                bottom = 144.dp,
                 start = 16.dp,
                 end = 16.dp,
             ),
@@ -201,28 +195,58 @@ fun ToolsHubScreen(
             }
         }
 
-        // Lightweight Scrim behind floating header
         FolioTopScrim(
-            height = headerHeight,
+            height = headerHeight + 16.dp,
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        // Transparent Floating Top Header
-        Row(
+        // Centered gallery-style floating pill header matching Browse & Collections
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.Transparent)
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .align(Alignment.TopCenter),
-            verticalAlignment = Alignment.CenterVertically,
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(DesignSystemR.string.tools),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Surface(
+                shape = CircleShape,
+                color = floatingBubbleColor,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shadowElevation = 4.dp,
+                modifier = Modifier.height(44.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                ) {
+                    Text(
+                        text = stringResource(DesignSystemR.string.tools),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            Surface(
+                onClick = onOpenSettings,
+                shape = CircleShape,
+                color = floatingBubbleColor,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .size(44.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = stringResource(DesignSystemR.string.settings),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
         }
     }
 }

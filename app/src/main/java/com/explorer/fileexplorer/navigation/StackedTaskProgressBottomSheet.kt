@@ -2,6 +2,7 @@ package com.explorer.fileexplorer.navigation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.model.FileItem
+import com.explorer.fileexplorer.core.model.QueuedClipboardTask
 import com.explorer.fileexplorer.feature.transfer.TransferConflictAction
 import com.explorer.fileexplorer.feature.transfer.TransferQueueState
 import com.explorer.fileexplorer.feature.transfer.TransferQueueTask
@@ -69,7 +71,6 @@ fun StackedTaskProgressBottomSheet(
                 .fillMaxWidth()
                 .padding(bottom = 32.dp),
         ) {
-            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -92,7 +93,7 @@ fun StackedTaskProgressBottomSheet(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(DesignSystemR.string.clear),
+                            contentDescription = stringResource(DesignSystemR.string.close),
                         )
                     }
                 }
@@ -113,11 +114,8 @@ fun StackedTaskProgressBottomSheet(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 16.dp,
-                        vertical = 12.dp,
-                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     if (snapshot.activeTransfers.isNotEmpty()) {
                         item(key = "transfers_header") {
@@ -145,7 +143,7 @@ fun StackedTaskProgressBottomSheet(
 
                     if (snapshot.queuedClipboardTasks.isNotEmpty()) {
                         item(key = "clipboard_header") {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(4.dp))
                             Text(
                                 text = stringResource(DesignSystemR.string.queued_clipboard_actions),
                                 style = MaterialTheme.typography.titleSmall,
@@ -157,7 +155,11 @@ fun StackedTaskProgressBottomSheet(
                         items(snapshot.queuedClipboardTasks, key = { "clipboard_${it.id}" }) { clipTask ->
                             ClipboardTaskItem(
                                 task = clipTask,
-                                onExecute = { onExecuteClipboardTask?.invoke(clipTask.id) },
+                                canExecute = onExecuteClipboardTask != null,
+                                onExecute = {
+                                    onExecuteClipboardTask?.invoke(clipTask.id)
+                                    onDismiss()
+                                },
                                 onDismiss = { viewModel.dismissClipboardTask(clipTask.id) },
                             )
                         }
@@ -178,10 +180,8 @@ private fun TransferTaskItem(
     onResolveConflict: (TransferConflictAction, Boolean) -> Unit,
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -190,8 +190,9 @@ private fun TransferTaskItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                val displayName = task.sourcePaths.firstOrNull()?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
-                    ?: task.currentFile.trimEnd('/').substringAfterLast('/').ifBlank { task.operation.name }
+                val displayName = task.currentFile.trimEnd('/').substringAfterLast('/').ifBlank { null }
+                    ?: task.sourcePaths.firstOrNull()?.trimEnd('/')?.substringAfterLast('/')?.ifBlank { null }
+                    ?: task.operation.name
                 Text(
                     text = displayName,
                     style = MaterialTheme.typography.bodyLarge,
@@ -226,34 +227,63 @@ private fun TransferTaskItem(
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
 
             val progress = if (task.totalBytes > 0) {
                 (task.transferredBytes.toFloat() / task.totalBytes).coerceIn(0f, 1f)
-            } else 0f
+            } else {
+                0f
+            }
 
             if (task.state == TransferQueueState.RUNNING || task.state == TransferQueueState.PAUSED) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp),
-                )
-                Spacer(Modifier.height(4.dp))
+                if (task.totalBytes > 0L) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                val telemetry = buildList {
+                    if (task.totalBytes > 0L) {
+                        add("${FileItem.formatSize(task.transferredBytes)} / ${FileItem.formatSize(task.totalBytes)}")
+                    }
+                    if (task.speedBytesPerSec > 0L) {
+                        add("${FileItem.formatSize(task.speedBytesPerSec)}/s")
+                    }
+                    task.etaSeconds?.takeIf { it > 0L }?.let { eta ->
+                        add(formatEta(eta))
+                    }
+                }.joinToString(" • ")
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        text = "${FileItem.formatSize(task.transferredBytes)} / ${FileItem.formatSize(task.totalBytes)}",
+                        text = telemetry,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                    Text(
-                        text = "${(progress * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (task.totalBytes > 0L) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
@@ -308,15 +338,14 @@ private fun TransferTaskItem(
 
 @Composable
 private fun ClipboardTaskItem(
-    task: com.explorer.fileexplorer.core.model.QueuedClipboardTask,
+    task: QueuedClipboardTask,
+    canExecute: Boolean,
     onExecute: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -329,21 +358,28 @@ private fun ClipboardTaskItem(
                 imageVector = if (task.isExtract) Icons.Rounded.Unarchive else Icons.Rounded.ContentPaste,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(12.dp))
+            val sourceLabel = task.sourcePath.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
+            val firstName = task.items.firstOrNull()?.name
+            val subtitle = if (task.items.size == 1 && firstName != null) {
+                "$firstName • $sourceLabel"
+            } else {
+                "${task.items.size} • $sourceLabel"
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (task.isExtract) {
                         stringResource(DesignSystemR.string.queue_extract)
                     } else {
-                        task.operation.name
+                        task.operation.name.lowercase().replaceFirstChar { it.uppercase() }
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${task.items.size} ${task.sourcePath}",
+                    text = subtitle,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -352,6 +388,7 @@ private fun ClipboardTaskItem(
             }
             Spacer(Modifier.width(8.dp))
             FilledTonalButton(
+                enabled = canExecute,
                 onClick = onExecute,
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -375,4 +412,10 @@ private fun ClipboardTaskItem(
             }
         }
     }
+}
+
+private fun formatEta(seconds: Long): String = when {
+    seconds < 60L -> "${seconds}s"
+    seconds < 3600L -> "${seconds / 60L}m ${seconds % 60L}s"
+    else -> "${seconds / 3600L}h ${(seconds % 3600L) / 60L}m"
 }

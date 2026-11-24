@@ -1,22 +1,37 @@
 package com.explorer.fileexplorer.core.designsystem
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,8 +44,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -50,17 +65,11 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.Widgets
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingActionButtonMenu
-import androidx.compose.material3.FloatingActionButtonMenuItem
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleFloatingActionButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,12 +89,20 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+
+private val PillHeight = 56.dp
+private val FabWidth = 56.dp
+private val TaskPillWidth = 76.dp
+private val InterPillGap = 8.dp
 
 private data class FolioNavDestination(
     val id: String,
@@ -93,24 +110,30 @@ private data class FolioNavDestination(
     val icon: ImageVector,
 )
 
-private enum class DockRenderMode {
+private enum class LeftPillKind {
+    ROOT_TABS,
+    SUBFOLDER_NAV,
     INLINE_SEARCH,
-    SELECTION,
-    NORMAL,
+    SELECTION_EDIT,
+    SELECTION_ARCHIVE,
+}
+
+private enum class RightPillKind {
+    FAB_MENU,
+    SELECTION_MANAGE,
 }
 
 /**
- * Native Material 3 Expressive 3-slot floating bottom dock.
+ * Persistent-container M3 Expressive 3-slot morphing bottom bar.
  *
- * Slot 1: Primary Toolbar ([HorizontalFloatingToolbar]) - Root tabs or Subfolder [Back | Search | Home].
- * Slot 2: Conditional Task & Progress Pill - Shows stacked clipboard queue and/or live transfer progress.
- * Slot 3: Contextual [FloatingActionButtonMenu] (+) anchored cleanly to BottomEnd.
+ * - Outer pill surfaces stay mounted so widths, corners, and colors morph continuously via springs
+ *   instead of crossfading separate bars.
+ * - Inline search physically expands the left pill to full width while collapsing the right FAB.
+ * - Middle Task/Progress pill injects smoothly between Slot 1 & Slot 3 and draws progress fill
+ *   in the draw phase inside the surface.
+ * - Contextual (+) FAB shares the exact 56.dp baseline and fans M3 Expressive menu pills upward.
  */
-@OptIn(
-    ExperimentalMaterial3ExpressiveApi::class,
-    ExperimentalMaterial3Api::class,
-    ExperimentalFoundationApi::class,
-)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolioMorphingBottomBar(
     selectedDestination: String,
@@ -123,7 +146,6 @@ fun FolioMorphingBottomBar(
     var fabMenuExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
 
-    // Always auto-collapse the FAB menu on navigation, folder change, selection, or search
     LaunchedEffect(
         selectedDestination,
         controller.contextResetKey,
@@ -142,532 +164,680 @@ fun FolioMorphingBottomBar(
         )
     }
 
-    val renderMode = when {
-        controller.inlineSearchActive -> DockRenderMode.INLINE_SEARCH
-        controller.selectionMode -> DockRenderMode.SELECTION
-        else -> DockRenderMode.NORMAL
+    val enabledFabActions = remember(controller.fabMenuItems) {
+        controller.fabMenuItems.filter { it.enabled }
     }
+    val hasFab = enabledFabActions.isNotEmpty()
+    val hasTasks = controller.taskBadgeCount > 0 && !controller.selectionMode && !controller.inlineSearchActive
+    val compactTabs = hasTasks
+
+    val leftKind = when {
+        controller.inlineSearchActive -> LeftPillKind.INLINE_SEARCH
+        controller.selectionMode -> {
+            if (controller.selectionActions.insideArchive) LeftPillKind.SELECTION_ARCHIVE else LeftPillKind.SELECTION_EDIT
+        }
+        controller.isSubfolder -> LeftPillKind.SUBFOLDER_NAV
+        else -> LeftPillKind.ROOT_TABS
+    }
+
+    val rightKind = if (controller.selectionMode) RightPillKind.SELECTION_MANAGE else RightPillKind.FAB_MENU
 
     val triggerSearch: () -> Unit = {
         fabMenuExpanded = false
         controller.onInlineSearchOpen?.invoke() ?: onSearchClick()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.End,
-    ) {
-        // Independent scroll-to-top button tucked cleanly above the FAB
-        AnimatedVisibility(
-            visible = controller.showScrollToTop &&
-                !controller.selectionMode &&
-                !controller.inlineSearchActive &&
-                !fabMenuExpanded,
-            enter = if (reducedMotion) {
-                fadeIn(tween(80))
-            } else {
-                fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.78f) + slideInVertically(tween(120)) { it / 3 }
-            },
-            exit = if (reducedMotion) {
-                fadeOut(tween(80))
-            } else {
-                fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.78f) + slideOutVertically(tween(100)) { it / 3 }
-            },
+    val spatialDpSpec = if (reducedMotion) {
+        tween<Dp>(durationMillis = 80)
+    } else {
+        spring<Dp>(dampingRatio = 0.82f, stiffness = 460f)
+    }
+    val colorSpec = spring<Color>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = 1400f,
+    )
+    val floatSpec = if (reducedMotion) {
+        tween<Float>(durationMillis = 80)
+    } else {
+        spring<Float>(dampingRatio = 0.8f, stiffness = 520f)
+    }
+
+    val rightContainerTarget = when {
+        controller.selectionMode -> colorScheme.surfaceContainerHigh
+        fabMenuExpanded -> colorScheme.primary
+        else -> colorScheme.primaryContainer
+    }
+    val rightContentTarget = when {
+        controller.selectionMode -> colorScheme.onSurface
+        fabMenuExpanded -> colorScheme.onPrimary
+        else -> colorScheme.onPrimaryContainer
+    }
+    val rightBg by animateColorAsState(rightContainerTarget, colorSpec, label = "rightPillBg")
+    val rightFg by animateColorAsState(rightContentTarget, colorSpec, label = "rightPillFg")
+    val fabCornerRadius by animateDpAsState(
+        targetValue = if (fabMenuExpanded && !controller.selectionMode) 18.dp else 28.dp,
+        animationSpec = spatialDpSpec,
+        label = "fabCorner",
+    )
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        // Click-outside catcher when FAB menu is open
+        if (fabMenuExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { fabMenuExpanded = false },
+                    ),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.End,
         ) {
-            Box(modifier = Modifier.padding(bottom = 10.dp, end = 7.dp)) {
-                Surface(
-                    onClick = {
-                        controller.onScrollToTop()
-                        controller.resetScrollMorph()
-                    },
-                    shape = CircleShape,
-                    color = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f),
-                    contentColor = colorScheme.onSurface,
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.size(42.dp),
+            // Staggered M3 Expressive FAB menu pills fanning cleanly upward above Slot 3
+            AnimatedVisibility(
+                visible = fabMenuExpanded && hasFab && !controller.selectionMode && !controller.inlineSearchActive,
+                enter = fadeIn(tween(120)) + slideInVertically(tween(180, easing = FastOutSlowInEasing)) { it / 4 },
+                exit = fadeOut(tween(90)) + slideOutVertically(tween(120)) { it / 4 },
+            ) {
+                Column(
+                    modifier = Modifier.padding(bottom = 10.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.ArrowUpward,
-                            contentDescription = stringResource(R.string.scroll_to_top),
-                            modifier = Modifier.size(20.dp),
-                        )
+                    enabledFabActions.forEach { action ->
+                        Surface(
+                            onClick = {
+                                fabMenuExpanded = false
+                                action.onClick()
+                            },
+                            shape = CircleShape,
+                            color = colorScheme.secondaryContainer,
+                            contentColor = colorScheme.onSecondaryContainer,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.height(48.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = action.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = stringResource(action.labelRes),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        AnimatedContent(
-            targetState = renderMode,
-            transitionSpec = {
-                val dur = if (reducedMotion) 80 else 180
-                fadeIn(tween(dur)) togetherWith fadeOut(tween(dur / 2))
-            },
-            label = "folio_dock_mode",
-            modifier = Modifier.fillMaxWidth(),
-        ) { mode ->
-            when (mode) {
-                DockRenderMode.INLINE_SEARCH -> {
-                    val focusRequester = remember { FocusRequester() }
-                    LaunchedEffect(Unit) {
-                        runCatching { focusRequester.requestFocus() }
+            // Independent scroll-to-top bubble above right pill
+            AnimatedVisibility(
+                visible = controller.showScrollToTop &&
+                    !controller.selectionMode &&
+                    !controller.inlineSearchActive &&
+                    !fabMenuExpanded,
+                enter = if (reducedMotion) {
+                    fadeIn(tween(80))
+                } else {
+                    fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.78f) + slideInVertically(tween(120)) { it / 3 }
+                },
+                exit = if (reducedMotion) {
+                    fadeOut(tween(80))
+                } else {
+                    fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.78f) + slideOutVertically(tween(100)) { it / 3 }
+                },
+            ) {
+                Box(modifier = Modifier.padding(bottom = 10.dp, end = 7.dp)) {
+                    Surface(
+                        onClick = {
+                            controller.onScrollToTop()
+                            controller.resetScrollMorph()
+                        },
+                        shape = CircleShape,
+                        color = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f),
+                        contentColor = colorScheme.onSurface,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.ArrowUpward,
+                                contentDescription = stringResource(R.string.scroll_to_top),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
+                }
+            }
+
+            // Persistent 3-slot morphing container row (all pills aligned to exact 56.dp baseline)
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                val totalW = maxWidth
+                val showRight = controller.selectionMode || (!controller.inlineSearchActive && hasFab)
+                val showMiddle = hasTasks
+
+                val rightTargetW = when {
+                    controller.inlineSearchActive -> 0.dp
+                    controller.selectionMode -> ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp)
+                    hasFab -> FabWidth
+                    else -> 0.dp
+                }
+
+                val middleTargetW = if (showMiddle) TaskPillWidth else 0.dp
+                val gap1Target = if (showMiddle) InterPillGap else 0.dp
+                val gap2Target = if (showRight) InterPillGap else 0.dp
+
+                val leftTargetW = when (leftKind) {
+                    LeftPillKind.INLINE_SEARCH -> totalW
+                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE ->
+                        ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp)
+                    LeftPillKind.SUBFOLDER_NAV -> {
+                        val avail = totalW - middleTargetW - rightTargetW - gap1Target - gap2Target
+                        164.dp.coerceAtMost(avail.coerceAtLeast(136.dp))
+                    }
+                    LeftPillKind.ROOT_TABS -> {
+                        val avail = (totalW - middleTargetW - rightTargetW - gap1Target - gap2Target).coerceAtLeast(172.dp)
+                        if (compactTabs) avail.coerceAtMost(212.dp) else avail.coerceAtMost(308.dp)
+                    }
+                }
+
+                val leftWidth by animateDpAsState(leftTargetW, spatialDpSpec, label = "dockLeftW")
+                val middleWidth by animateDpAsState(middleTargetW, spatialDpSpec, label = "dockMidW")
+                val rightWidth by animateDpAsState(rightTargetW, spatialDpSpec, label = "dockRightW")
+                val gap1 by animateDpAsState(gap1Target, spatialDpSpec, label = "dockGap1")
+                val gap2 by animateDpAsState(gap2Target, spatialDpSpec, label = "dockGap2")
+                val middleAlpha by animateFloatAsState(if (showMiddle) 1f else 0f, floatSpec, label = "dockMidA")
+                val rightAlpha by animateFloatAsState(if (showRight) 1f else 0f, floatSpec, label = "dockRightA")
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    // SLOT 1: Persistent Primary Pill (Root Tabs <-> Subfolder <-> Inline Search <-> Selection)
                     Surface(
                         shape = CircleShape,
                         color = colorScheme.surfaceContainerHigh,
                         contentColor = colorScheme.onSurface,
                         shadowElevation = 6.dp,
+                        border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
+                            .width(leftWidth)
+                            .height(PillHeight)
+                            .clip(CircleShape),
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(onClick = controller.onInlineSearchClose) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = stringResource(R.string.close_search),
-                                )
-                            }
+                        AnimatedContent(
+                            targetState = leftKind,
+                            transitionSpec = { folioInnerMorphSpec(reducedMotion) },
+                            label = "dockLeftContent",
+                            modifier = Modifier.fillMaxSize(),
+                        ) { kind ->
+                            when (kind) {
+                                LeftPillKind.ROOT_TABS -> {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .animateContentSize(
+                                                    animationSpec = if (reducedMotion) tween(80) else spring(0.82f, 500f),
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        ) {
+                                            destinations.forEach { dest ->
+                                                FolioMorphTabChip(
+                                                    destination = dest,
+                                                    isSelected = selectedDestination == dest.id,
+                                                    iconOnly = compactTabs,
+                                                    reducedMotion = reducedMotion,
+                                                    onClick = { onDestinationSelected(dest.id) },
+                                                )
+                                            }
+                                        }
+                                        FolioIconPillButton(
+                                            icon = Icons.Rounded.Search,
+                                            contentDescription = stringResource(R.string.search),
+                                            onClick = triggerSearch,
+                                        )
+                                    }
+                                }
 
-                            BasicTextField(
-                                value = controller.inlineSearchQuery,
-                                onValueChange = controller.onInlineSearchQueryChange,
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = colorScheme.onSurface),
-                                cursorBrush = SolidColor(colorScheme.primary),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = { controller.onOpenFullSearch() }),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .focusRequester(focusRequester)
-                                    .padding(horizontal = 6.dp),
-                                decorationBox = { innerTextField ->
-                                    Box(contentAlignment = Alignment.CenterStart) {
-                                        if (controller.inlineSearchQuery.isEmpty()) {
-                                            Text(
-                                                text = stringResource(R.string.search_files_hint),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                                maxLines = 1,
+                                LeftPillKind.SUBFOLDER_NAV -> {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                    ) {
+                                        FolioIconPillButton(
+                                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = stringResource(R.string.back),
+                                            onClick = controller.onNavigateUp,
+                                            onLongClick = controller.onNavigateToRoot,
+                                        )
+                                        FolioIconPillButton(
+                                            icon = Icons.Rounded.Search,
+                                            contentDescription = stringResource(R.string.search),
+                                            onClick = triggerSearch,
+                                        )
+                                        FolioIconPillButton(
+                                            icon = Icons.Rounded.Home,
+                                            contentDescription = stringResource(R.string.home),
+                                            onClick = controller.onNavigateToRoot,
+                                        )
+                                    }
+                                }
+
+                                LeftPillKind.INLINE_SEARCH -> {
+                                    val focusRequester = remember { FocusRequester() }
+                                    LaunchedEffect(Unit) {
+                                        runCatching { focusRequester.requestFocus() }
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        FolioIconPillButton(
+                                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = stringResource(R.string.close_search),
+                                            onClick = controller.onInlineSearchClose,
+                                        )
+                                        BasicTextField(
+                                            value = controller.inlineSearchQuery,
+                                            onValueChange = controller.onInlineSearchQueryChange,
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = colorScheme.onSurface),
+                                            cursorBrush = SolidColor(colorScheme.primary),
+                                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                            keyboardActions = KeyboardActions(onSearch = { controller.onOpenFullSearch() }),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .focusRequester(focusRequester)
+                                                .padding(horizontal = 6.dp),
+                                            decorationBox = { innerTextField ->
+                                                Box(contentAlignment = Alignment.CenterStart) {
+                                                    if (controller.inlineSearchQuery.isEmpty()) {
+                                                        Text(
+                                                            text = stringResource(R.string.search_files_hint),
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                        )
+                                                    }
+                                                    innerTextField()
+                                                }
+                                            },
+                                        )
+                                        if (controller.inlineSearchQuery.isNotEmpty()) {
+                                            FolioIconPillButton(
+                                                icon = Icons.Rounded.Close,
+                                                contentDescription = stringResource(R.string.clear_search),
+                                                iconSize = 18.dp,
+                                                onClick = { controller.onInlineSearchQueryChange("") },
                                             )
                                         }
-                                        innerTextField()
+                                        Spacer(Modifier.width(4.dp))
+                                        val scopeBg by animateColorAsState(
+                                            targetValue = if (controller.inlineSearchRecursive) {
+                                                colorScheme.primaryContainer
+                                            } else {
+                                                colorScheme.surfaceContainerHighest
+                                            },
+                                            animationSpec = colorSpec,
+                                            label = "searchScopeBg",
+                                        )
+                                        val scopeFg by animateColorAsState(
+                                            targetValue = if (controller.inlineSearchRecursive) {
+                                                colorScheme.onPrimaryContainer
+                                            } else {
+                                                colorScheme.onSurfaceVariant
+                                            },
+                                            animationSpec = colorSpec,
+                                            label = "searchScopeFg",
+                                        )
+                                        Surface(
+                                            onClick = controller.onInlineSearchScopeToggle,
+                                            shape = CircleShape,
+                                            color = scopeBg,
+                                            contentColor = scopeFg,
+                                            modifier = Modifier
+                                                .height(34.dp)
+                                                .padding(end = 2.dp),
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.padding(horizontal = 12.dp),
+                                            ) {
+                                                Text(
+                                                    text = stringResource(
+                                                        if (controller.inlineSearchRecursive) R.string.all_scope else R.string.folder_scope,
+                                                    ),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                )
+                                            }
+                                        }
                                     }
-                                },
-                            )
-
-                            if (controller.inlineSearchQuery.isNotEmpty()) {
-                                IconButton(
-                                    onClick = { controller.onInlineSearchQueryChange("") },
-                                    modifier = Modifier.size(36.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = stringResource(R.string.clear_search),
-                                        modifier = Modifier.size(18.dp),
-                                    )
                                 }
-                            }
 
-                            Spacer(Modifier.width(4.dp))
-
-                            // Right-edge scope toggle chip (Folder / All)
-                            Surface(
-                                onClick = controller.onInlineSearchScopeToggle,
-                                shape = CircleShape,
-                                color = if (controller.inlineSearchRecursive) {
-                                    colorScheme.primaryContainer
-                                } else {
-                                    colorScheme.surfaceContainerHighest
-                                },
-                                contentColor = if (controller.inlineSearchRecursive) {
-                                    colorScheme.onPrimaryContainer
-                                } else {
-                                    colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier
-                                    .height(34.dp)
-                                    .padding(end = 4.dp),
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(
-                                            if (controller.inlineSearchRecursive) R.string.all_scope else R.string.folder_scope,
-                                        ),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
+                                LeftPillKind.SELECTION_EDIT -> {
+                                    val actions = controller.selectionActions
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight()
+                                                .alpha(if (actions.canMove) 1f else 0.38f)
+                                                .clickable(enabled = actions.canMove, onClick = actions.onCut),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center,
+                                        ) {
+                                            Icon(Icons.Rounded.ContentCut, null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = stringResource(R.string.cut),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Clip,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .height(20.dp)
+                                                .background(colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight()
+                                                .alpha(if (actions.canCopy) 1f else 0.38f)
+                                                .clickable(enabled = actions.canCopy, onClick = actions.onCopy),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center,
+                                        ) {
+                                            Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = stringResource(R.string.copy),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Clip,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                    }
-                }
 
-                DockRenderMode.SELECTION -> {
-                    val actions = controller.selectionActions
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Left Selection Pill: Cut | Copy (or Extract inside archive)
-                        Surface(
-                            shape = CircleShape,
-                            color = colorScheme.surfaceContainerHigh,
-                            contentColor = colorScheme.onSurface,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
-                        ) {
-                            if (actions.insideArchive) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .alpha(if (actions.canExtract) 1f else 0.4f)
-                                        .clickable(enabled = actions.canExtract, onClick = actions.onExtract),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Unarchive, null, modifier = Modifier.size(20.dp))
+                                LeftPillKind.SELECTION_ARCHIVE -> {
+                                    val actions = controller.selectionActions
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .alpha(if (actions.canExtract) 1f else 0.38f)
+                                            .clickable(enabled = actions.canExtract, onClick = actions.onExtract),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Icon(Icons.Rounded.Unarchive, null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(8.dp))
                                         Text(
                                             text = stringResource(R.string.extract_all),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Clip,
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.SemiBold,
                                         )
                                     }
                                 }
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .alpha(if (actions.canMove) 1f else 0.4f)
-                                            .clickable(enabled = actions.canMove, onClick = actions.onCut),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.ContentCut, null, modifier = Modifier.size(18.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(
-                                                text = stringResource(R.string.cut),
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Medium,
-                                            )
-                                        }
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .alpha(if (actions.canCopy) 1f else 0.4f)
-                                            .clickable(enabled = actions.canCopy, onClick = actions.onCopy),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.ContentCopy, null, modifier = Modifier.size(18.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(
-                                                text = stringResource(R.string.copy),
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Medium,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Right Selection Pill: Delete | More
-                        Surface(
-                            shape = CircleShape,
-                            color = colorScheme.surfaceContainerHigh,
-                            contentColor = colorScheme.onSurface,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                val deleteEnabled = actions.canDelete || actions.canTrash
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .combinedClickable(
-                                            enabled = deleteEnabled,
-                                            onClick = { if (actions.canTrash) actions.onDelete() else actions.onPermanentDelete() },
-                                            onLongClick = actions.onPermanentDelete,
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.DeleteOutline,
-                                            contentDescription = null,
-                                            tint = if (deleteEnabled) colorScheme.error else colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            text = stringResource(R.string.delete),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (deleteEnabled) colorScheme.error else colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                        )
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .clickable(onClick = actions.onMore),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = stringResource(R.string.more),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Medium,
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
-                }
 
-                DockRenderMode.NORMAL -> {
-                    val hasTasks = controller.taskBadgeCount > 0
-                    val hasFab = controller.fabMenuItems.isNotEmpty()
-                    val compactTabs = hasTasks
+                    if (gap1 > 0.dp) Spacer(Modifier.width(gap1))
 
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.BottomStart,
-                    ) {
-                        // Slots 1 & 2 stay strictly clear of the 56dp FAB on the right
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(end = if (hasFab) 64.dp else 0.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Slot 1: Primary Toolbar
-                            HorizontalFloatingToolbar(
-                                expanded = true,
-                                modifier = Modifier.height(56.dp),
-                            ) {
-                                if (controller.isSubfolder) {
-                                    // Subfolder pill: [Back (long-press root) | Search | Home]
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .combinedClickable(
-                                                onClick = controller.onNavigateUp,
-                                                onLongClick = controller.onNavigateToRoot,
-                                            ),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                            contentDescription = stringResource(R.string.back),
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    }
-                                    IconButton(onClick = triggerSearch) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Search,
-                                            contentDescription = stringResource(R.string.search),
-                                        )
-                                    }
-                                    IconButton(onClick = controller.onNavigateToRoot) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Home,
-                                            contentDescription = stringResource(R.string.home),
-                                        )
-                                    }
-                                } else {
-                                    destinations.forEach { dest ->
-                                        val isSelected = selectedDestination == dest.id
-                                        val pillBg by animateColorAsState(
-                                            targetValue = if (isSelected) colorScheme.primaryContainer else Color.Transparent,
-                                            animationSpec = tween(if (reducedMotion) 60 else 180),
-                                            label = "tab_pill_bg_${dest.id}",
-                                        )
-                                        val pillFg by animateColorAsState(
-                                            targetValue = if (isSelected) colorScheme.onPrimaryContainer else colorScheme.onSurfaceVariant,
-                                            animationSpec = tween(if (reducedMotion) 60 else 180),
-                                            label = "tab_pill_fg_${dest.id}",
-                                        )
-
-                                        Surface(
-                                            onClick = { onDestinationSelected(dest.id) },
-                                            shape = CircleShape,
-                                            color = pillBg,
-                                            contentColor = pillFg,
-                                            modifier = Modifier
-                                                .height(42.dp)
-                                                .semantics { selected = isSelected },
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = if (isSelected && !compactTabs) 14.dp else 11.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Icon(
-                                                    imageVector = dest.icon,
-                                                    contentDescription = if (!isSelected || compactTabs) stringResource(dest.labelRes) else null,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                                if (isSelected && !compactTabs) {
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Text(
-                                                        text = stringResource(dest.labelRes),
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        maxLines = 1,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    IconButton(onClick = triggerSearch) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Search,
-                                            contentDescription = stringResource(R.string.search),
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Slot 2: Unified Task Stack & Live Transfer Progress Bubble
-                            if (hasTasks) {
-                                val progress = controller.taskProgress
-                                val hasConflict = controller.taskHasConflict
-                                val progressFillColor = if (hasConflict) {
-                                    colorScheme.errorContainer.copy(alpha = 0.55f)
-                                } else {
-                                    colorScheme.primaryContainer.copy(alpha = 0.72f)
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        fabMenuExpanded = false
-                                        controller.onTaskPillClick?.invoke()
-                                    },
-                                    shape = CircleShape,
-                                    color = colorScheme.surfaceContainerHigh,
-                                    contentColor = if (hasConflict) colorScheme.error else colorScheme.primary,
-                                    shadowElevation = 4.dp,
-                                    modifier = Modifier
-                                        .height(56.dp)
-                                        .widthIn(min = 60.dp, max = 96.dp)
-                                        .clip(CircleShape)
-                                        .drawBehind {
-                                            val p = controller.taskProgress
-                                            if (p != null && p > 0f) {
-                                                drawRect(
-                                                    color = progressFillColor,
-                                                    size = Size(
-                                                        width = size.width * p.coerceIn(0f, 1f),
-                                                        height = size.height,
-                                                    ),
-                                                )
-                                            }
-                                        },
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .padding(horizontal = 12.dp)
-                                            .fillMaxHeight(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.SwapHoriz,
-                                            contentDescription = stringResource(R.string.tasks_and_progress),
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                        Spacer(Modifier.width(5.dp))
-                                        val badgeLabel = if (progress != null && progress > 0f) {
-                                            "${(progress * 100f).roundToInt()}%"
-                                        } else {
-                                            "${controller.taskBadgeCount}"
-                                        }
-                                        Text(
-                                            text = badgeLabel,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                        )
-                                    }
-                                }
-                            }
+                    // SLOT 2: Middle Task Stack & Live Transfer Progress Pill
+                    if (middleWidth > 1.dp) {
+                        val hasConflict = controller.taskHasConflict
+                        val progressFillColor = if (hasConflict) {
+                            colorScheme.errorContainer.copy(alpha = 0.65f)
+                        } else {
+                            colorScheme.primaryContainer.copy(alpha = 0.78f)
                         }
 
-                        // Slot 3: Contextual FAB Menu (+) anchored cleanly to BottomEnd
-                        if (hasFab) {
-                            Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                                FloatingActionButtonMenu(
-                                    expanded = fabMenuExpanded,
-                                    button = {
-                                        ToggleFloatingActionButton(
-                                            checked = fabMenuExpanded,
-                                            onCheckedChange = { fabMenuExpanded = it },
-                                            containerSize = { 56.dp },
-                                            containerCornerRadius = { 28.dp },
-                                        ) {
-                                            val rotation by animateFloatAsState(
-                                                targetValue = if (fabMenuExpanded) 45f else 0f,
-                                                label = "fab_rotation",
+                        Surface(
+                            onClick = {
+                                fabMenuExpanded = false
+                                controller.onTaskPillClick?.invoke()
+                            },
+                            shape = CircleShape,
+                            color = colorScheme.surfaceContainerHigh,
+                            contentColor = if (hasConflict) colorScheme.error else colorScheme.primary,
+                            shadowElevation = 6.dp,
+                            border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .width(middleWidth)
+                                .height(PillHeight)
+                                .graphicsLayer { alpha = middleAlpha }
+                                .clip(CircleShape),
+                        ) {
+                            // Draw progress fill INSIDE Surface so it renders above Surface's background
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .drawBehind {
+                                        val p = controller.taskProgress
+                                        if (p != null && p > 0f) {
+                                            drawRect(
+                                                color = progressFillColor,
+                                                size = Size(
+                                                    width = size.width * p.coerceIn(0f, 1f),
+                                                    height = size.height,
+                                                ),
                                             )
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SwapHoriz,
+                                    contentDescription = stringResource(R.string.tasks_and_progress),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                val p = controller.taskProgress
+                                val label = if (p != null && p > 0f) {
+                                    "${(p * 100f).roundToInt()}%"
+                                } else {
+                                    "${controller.taskBadgeCount}"
+                                }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                    }
+
+                    if (gap2 > 0.dp) Spacer(Modifier.width(gap2))
+
+                    // SLOT 3: Persistent Right Pill (Contextual + FAB Menu <-> Selection [Delete | More])
+                    if (rightWidth > 1.dp) {
+                        val rightShape = RoundedCornerShape(fabCornerRadius)
+                        Surface(
+                            shape = rightShape,
+                            color = rightBg,
+                            contentColor = rightFg,
+                            shadowElevation = 6.dp,
+                            border = if (controller.selectionMode) {
+                                BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            } else {
+                                null
+                            },
+                            modifier = Modifier
+                                .width(rightWidth)
+                                .height(PillHeight)
+                                .graphicsLayer { alpha = rightAlpha }
+                                .clip(rightShape),
+                        ) {
+                            AnimatedContent(
+                                targetState = rightKind,
+                                transitionSpec = { folioInnerMorphSpec(reducedMotion) },
+                                label = "dockRightContent",
+                                modifier = Modifier.fillMaxSize(),
+                            ) { kind ->
+                                when (kind) {
+                                    RightPillKind.FAB_MENU -> {
+                                        val fabInteraction = remember { MutableInteractionSource() }
+                                        val pressed by fabInteraction.collectIsPressedAsState()
+                                        val pressScale by animateFloatAsState(
+                                            targetValue = if (pressed) 0.90f else 1f,
+                                            animationSpec = MonoSpring.bouncy(),
+                                            label = "fabPressScale",
+                                        )
+                                        val rotation by animateFloatAsState(
+                                            targetValue = if (fabMenuExpanded) 45f else 0f,
+                                            animationSpec = if (reducedMotion) tween(80) else MonoSpring.bouncy(),
+                                            label = "fabRotation",
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
+                                                .clickable(
+                                                    interactionSource = fabInteraction,
+                                                    indication = ripple(bounded = true),
+                                                    onClick = {
+                                                        if (enabledFabActions.size == 1) {
+                                                            enabledFabActions.first().onClick()
+                                                        } else {
+                                                            fabMenuExpanded = !fabMenuExpanded
+                                                        }
+                                                    },
+                                                ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Rounded.Add,
                                                 contentDescription = stringResource(
                                                     if (fabMenuExpanded) R.string.close else R.string.more_options,
                                                 ),
-                                                modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .graphicsLayer { rotationZ = rotation },
                                             )
                                         }
-                                    },
-                                ) {
-                                    controller.fabMenuItems
-                                        .filter { it.enabled }
-                                        .forEach { action ->
-                                            FloatingActionButtonMenuItem(
-                                                onClick = {
-                                                    fabMenuExpanded = false
-                                                    action.onClick()
-                                                },
-                                                text = { Text(stringResource(action.labelRes)) },
-                                                icon = { Icon(action.icon, null) },
-                                            )
+                                    }
+
+                                    RightPillKind.SELECTION_MANAGE -> {
+                                        val actions = controller.selectionActions
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            if (!actions.insideArchive) {
+                                                val deleteEnabled = actions.canDelete || actions.canTrash
+                                                Row(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .alpha(if (deleteEnabled) 1f else 0.38f)
+                                                        .combinedClickable(
+                                                            enabled = deleteEnabled,
+                                                            onClick = { if (actions.canTrash) actions.onDelete() else actions.onPermanentDelete() },
+                                                            onLongClick = actions.onPermanentDelete,
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center,
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.DeleteOutline,
+                                                        contentDescription = stringResource(R.string.delete),
+                                                        tint = colorScheme.error,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text(
+                                                        text = stringResource(R.string.delete),
+                                                        color = colorScheme.error,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        overflow = TextOverflow.Clip,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                    )
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .height(20.dp)
+                                                        .background(colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                                                )
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                                    .clickable(onClick = actions.onMore),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center,
+                                            ) {
+                                                Icon(Icons.Rounded.MoreHoriz, null, modifier = Modifier.size(20.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    text = stringResource(R.string.more),
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Clip,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
                                         }
+                                    }
                                 }
                             }
                         }
@@ -677,3 +847,136 @@ fun FolioMorphingBottomBar(
         }
     }
 }
+
+@Composable
+private fun FolioMorphTabChip(
+    destination: FolioNavDestination,
+    isSelected: Boolean,
+    iconOnly: Boolean,
+    reducedMotion: Boolean,
+    onClick: () -> Unit,
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val bg by animateColorAsState(
+        targetValue = if (isSelected) colorScheme.secondaryContainer else Color.Transparent,
+        animationSpec = MonoSpring.noBounceColor(),
+        label = "tabBg_${destination.id}",
+    )
+    val fg by animateColorAsState(
+        targetValue = if (isSelected) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
+        animationSpec = MonoSpring.noBounceColor(),
+        label = "tabFg_${destination.id}",
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = if (reducedMotion) tween(60) else MonoSpring.bouncy(),
+        label = "tabScale_${destination.id}",
+    )
+
+    Box(
+        modifier = Modifier
+            .height(44.dp)
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clip(CircleShape)
+            .background(bg)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .semantics { selected = isSelected }
+            .padding(horizontal = if (isSelected && !iconOnly) 14.dp else 11.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = stringResource(destination.labelRes),
+                tint = fg,
+                modifier = Modifier.size(20.dp),
+            )
+            AnimatedVisibility(
+                visible = isSelected && !iconOnly,
+                enter = expandHorizontally(
+                    animationSpec = if (reducedMotion) tween(60) else spring(0.82f, 500f),
+                    expandFrom = Alignment.Start,
+                ) + fadeIn(tween(110, delayMillis = 30, easing = LinearEasing)),
+                exit = shrinkHorizontally(
+                    animationSpec = if (reducedMotion) tween(60) else spring(0.82f, 500f),
+                    shrinkTowards = Alignment.Start,
+                ) + fadeOut(tween(70, easing = LinearEasing)),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(destination.labelRes),
+                        color = fg,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolioIconPillButton(
+    icon: ImageVector,
+    contentDescription: String,
+    iconSize: Dp = 20.dp,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = MonoSpring.bouncy(),
+        label = "iconBtnScale",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clip(CircleShape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+private fun <S> AnimatedContentTransitionScope<S>.folioInnerMorphSpec(reducedMotion: Boolean) =
+    if (reducedMotion) {
+        fadeIn(tween(70)) togetherWith fadeOut(tween(50))
+    } else {
+        (fadeIn(tween(durationMillis = 150, delayMillis = 60, easing = LinearEasing)) +
+            scaleIn(initialScale = 0.94f, animationSpec = tween(150, delayMillis = 60, easing = FastOutSlowInEasing)))
+            .togetherWith(
+                fadeOut(tween(durationMillis = 65, easing = LinearEasing)) +
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(65, easing = FastOutSlowInEasing)),
+            )
+            .using(SizeTransform(clip = false))
+    }

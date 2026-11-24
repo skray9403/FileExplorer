@@ -1,32 +1,67 @@
 package com.explorer.fileexplorer.feature.browser
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
+import com.explorer.fileexplorer.core.designsystem.MonoSpring
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
-import kotlin.math.abs
+import com.explorer.fileexplorer.core.model.StorageVolume
+
+internal fun resolveTabLabel(
+    path: String,
+    volumes: List<StorageVolume>,
+    fallbackStorage: String,
+): String {
+    val cleaned = path.trimEnd('/')
+    if (cleaned.isEmpty() || cleaned == "/") return "/"
+    volumes.firstOrNull { it.path.trimEnd('/') == cleaned }?.let { return it.name }
+    if (cleaned == "/storage/emulated/0") return fallbackStorage
+    return cleaned.substringAfterLast('/').ifBlank { fallbackStorage }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -38,36 +73,48 @@ internal fun BrowserTabsBar(
     onAdd: () -> Unit,
     onReorder: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
+    volumes: List<StorageVolume> = emptyList(),
+    showAddButton: Boolean = true,
+    floating: Boolean = false,
 ) {
     val tabBounds = remember { mutableStateMapOf<Long, Rect>() }
     var reorderingId by remember { mutableStateOf<Long?>(null) }
     val currentOnSelect by rememberUpdatedState(onSelect)
     val currentOnClose by rememberUpdatedState(onClose)
     val currentOnReorder by rememberUpdatedState(onReorder)
-    val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
+    val storageFallback = stringResource(DesignSystemR.string.storage)
+
+    val containerColor = if (floating) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
 
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 1.dp,
+        color = containerColor,
+        tonalElevation = if (floating) 0.dp else 1.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = if (floating) 4.dp else 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp, vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 tabs.forEachIndexed { index, tab ->
                     val tabId = tab.id
-                    val latestIndex = index
-                    TabChip(
-                        tab = tab,
+                    val latestIndex by rememberUpdatedState(index)
+                    val label = resolveTabLabel(tab.path, volumes, storageFallback)
+                    TabPillChip(
+                        tabId = tabId,
+                        label = label,
                         selected = index == selectedIndex,
+                        canClose = tabs.size > 1,
                         isReordering = reorderingId == tabId,
-                        swipeThreshold = swipeThreshold,
-                        startPosition = tabBounds[tabId]?.center?.x ?: 0f,
+                        getStartPosition = { tabBounds[tabId]?.center?.x ?: 0f },
                         modifier = Modifier.onGloballyPositioned {
                             tabBounds[tabId] = it.boundsInRoot()
                         },
@@ -86,80 +133,110 @@ internal fun BrowserTabsBar(
                     )
                 }
             }
-            IconButton(onClick = onAdd) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(DesignSystemR.string.new_tab))
+            if (showAddButton) {
+                IconButton(
+                    onClick = onAdd,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(DesignSystemR.string.new_tab),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TabChip(
-    tab: BrowserTab,
+private fun TabPillChip(
+    tabId: Long,
+    label: String,
     selected: Boolean,
+    canClose: Boolean,
     isReordering: Boolean,
-    swipeThreshold: Float,
-    startPosition: Float,
+    getStartPosition: () -> Float,
     modifier: Modifier,
     onSelect: () -> Unit,
     onClose: () -> Unit,
     onReorderStart: () -> Unit,
     onReorderDragEnd: (Float) -> Unit,
 ) {
-    val label = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
+    val colorScheme = MaterialTheme.colorScheme
+    val latestGetStart by rememberUpdatedState(getStartPosition)
+    val bg by animateColorAsState(
+        targetValue = if (selected) colorScheme.secondaryContainer else colorScheme.surfaceContainerHighest.copy(alpha = 0.88f),
+        animationSpec = MonoSpring.noBounceColor(),
+        label = "tabPillBg_$tabId",
+    )
+    val fg by animateColorAsState(
+        targetValue = if (selected) colorScheme.onSecondaryContainer else colorScheme.onSurfaceVariant,
+        animationSpec = MonoSpring.noBounceColor(),
+        label = "tabPillFg_$tabId",
+    )
+
     Surface(
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.small,
+        color = bg,
+        contentColor = fg,
+        shape = CircleShape,
+        shadowElevation = if (selected) 3.dp else 1.dp,
+        border = if (!selected) BorderStroke(0.5.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)) else null,
         modifier = modifier
-            .widthIn(min = 104.dp, max = 190.dp)
+            .height(34.dp)
+            .widthIn(min = 88.dp, max = 168.dp)
             .alpha(if (isReordering) 0.6f else 1f)
-            .pointerInput(tab.id, swipeThreshold) {
-                var distance = 0f
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { change, amount ->
-                        change.consume()
-                        distance += amount
-                    },
-                    onDragEnd = {
-                        if (abs(distance) >= swipeThreshold) onClose()
-                    },
-                    onDragCancel = {},
-                )
-            }
-            .pointerInput(tab.id) {
+            .clip(CircleShape)
+            .pointerInput(tabId) {
                 var position = 0f
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         onReorderStart()
-                        position = startPosition
+                        position = latestGetStart()
                     },
                     onDrag = { change, amount ->
                         change.consume()
                         position += amount.x
                     },
                     onDragEnd = { onReorderDragEnd(position) },
-                    onDragCancel = {},
+                    onDragCancel = { onReorderDragEnd(latestGetStart()) },
                 )
             }
             .clickable(onClick = onSelect),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = if (canClose) 6.dp else 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(
+                imageVector = Icons.Rounded.Folder,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f, fill = false),
             )
-            IconButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(DesignSystemR.string.close_tab, label), modifier = Modifier.size(16.dp))
+            if (canClose) {
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(DesignSystemR.string.close_tab, label),
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
             }
         }
     }

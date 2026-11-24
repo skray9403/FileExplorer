@@ -21,6 +21,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -43,8 +44,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -173,6 +176,7 @@ import com.explorer.fileexplorer.core.model.RepositoryOperation
 import com.explorer.fileexplorer.core.model.SortDirection
 import com.explorer.fileexplorer.core.model.SortField
 import com.explorer.fileexplorer.core.model.SortOrder
+import com.explorer.fileexplorer.core.model.StorageVolume
 import com.explorer.fileexplorer.core.model.ViewMode
 import com.explorer.fileexplorer.core.storage.RootState
 import com.explorer.fileexplorer.core.ui.FileGridItem
@@ -244,8 +248,11 @@ fun BrowserScreen(
         ).show()
     }
 
-    val listState = rememberLazyListState()
-    val gridState = rememberLazyGridState()
+    val tabListStates = remember { mutableMapOf<Long, LazyListState>() }
+    val tabGridStates = remember { mutableMapOf<Long, LazyGridState>() }
+    val activeTabId = state.tabs.getOrNull(state.selectedTabIndex)?.id ?: 1L
+    val listState = tabListStates.getOrPut(activeTabId) { LazyListState() }
+    val gridState = tabGridStates.getOrPut(activeTabId) { LazyGridState() }
 
     val usbTreePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         uri?.let(viewModel::addUsbTree)
@@ -421,11 +428,6 @@ fun BrowserScreen(
                 labelRes = DesignSystemR.string.mount_usb,
                 onClick = { usbTreePicker.launch(null) },
             ),
-            FolioFabMenuAction(
-                icon = Icons.Rounded.Lan,
-                labelRes = DesignSystemR.string.network_shares,
-                onClick = onOpenNetwork,
-            ),
         )
     }
 
@@ -598,6 +600,9 @@ fun BrowserScreen(
                         .nestedScroll(overscrollNewTabConnection),
                 ) { page ->
                     val currentTab = state.tabs.getOrNull(page)
+                    val pageTabId = currentTab?.id ?: page.toLong()
+                    val pageListState = tabListStates.getOrPut(pageTabId) { LazyListState() }
+                    val pageGridState = tabGridStates.getOrPut(pageTabId) { LazyGridState() }
                     val pageFiles = if (page == state.selectedTabIndex) {
                         state.displayedFiles
                     } else {
@@ -611,7 +616,7 @@ fun BrowserScreen(
                     ) {
                         if (state.viewMode == ViewMode.GRID) {
                             LazyVerticalGrid(
-                                state = gridState,
+                                state = pageGridState,
                                 columns = GridCells.Adaptive(minSize = 140.dp),
                                 contentPadding = PaddingValues(
                                     top = topHeaderHeight + 8.dp,
@@ -645,7 +650,7 @@ fun BrowserScreen(
                             }
                         } else {
                             LazyColumn(
-                                state = listState,
+                                state = pageListState,
                                 contentPadding = PaddingValues(
                                     top = topHeaderHeight + 8.dp,
                                     bottom = 144.dp,
@@ -773,6 +778,9 @@ fun BrowserScreen(
                     onClose = { viewModel.closeTab(BrowserPane.PRIMARY, it) },
                     onAdd = { viewModel.openTab(BrowserPane.PRIMARY) },
                     onReorder = { from, to -> viewModel.reorderTabs(BrowserPane.PRIMARY, from, to) },
+                    volumes = state.volumes,
+                    showAddButton = false,
+                    floating = true,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
             }
@@ -803,6 +811,12 @@ fun BrowserScreen(
         )
     }
 
+    val selectedFileObjects = remember(state.files, state.selectedItems) {
+        state.files.filter { it.path in state.selectedItems }
+    }
+    val canHexView = selectedFileObjects.size == 1 && !selectedFileObjects.first().isDirectory
+    val canQueueExtract = state.insideArchive || selectedFileObjects.any { it.isArchive }
+
     if (showSelectionMoreSheet && state.selectionMode) {
         SelectionMoreBottomSheet(
             selectedCount = state.selectedCount,
@@ -810,6 +824,8 @@ fun BrowserScreen(
             canDelete = state.capabilityMatrix.isActionEnabled(RepositoryOperation.DELETE),
             canCompress = state.capabilityMatrix.isActionEnabled(RepositoryFeature.ARCHIVE_CREATION),
             canWatchIntegrity = state.capabilityMatrix.isActionEnabled(RepositoryFeature.CHECKSUMS),
+            canHexView = canHexView,
+            canQueueExtract = canQueueExtract,
             onDismiss = { showSelectionMoreSheet = false },
             onShare = { showSelectionMoreSheet = false; viewModel.shareSelected() },
             onSendNearby = { showSelectionMoreSheet = false; viewModel.sendNearbySelected() },
@@ -830,6 +846,10 @@ fun BrowserScreen(
                 state.files.firstOrNull { it.path in state.selectedItems }
                     ?.takeIf { !it.isDirectory }
                     ?.let { onOpenHexEditor(it.path) }
+            },
+            onQueueExtract = {
+                showSelectionMoreSheet = false
+                viewModel.queueExtractSelected()
             },
             onProperties = {
                 showSelectionMoreSheet = false
@@ -875,6 +895,7 @@ fun BrowserScreen(
                 viewModel.openTab(BrowserPane.PRIMARY)
             },
             onDismiss = { showTabsSheet = false },
+            volumes = state.volumes,
         )
     }
     state.renameItem?.let { item ->
@@ -1267,20 +1288,21 @@ private fun FloatingBrowserTopBar(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (tabCount > 1) {
-                                    BadgedBox(
-                                        badge = {
-                                            Badge(
-                                                containerColor = colorScheme.primary,
-                                                contentColor = colorScheme.onPrimary,
-                                            ) {
-                                                Text("$tabCount")
-                                            }
-                                        },
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .border(
+                                                width = 1.8.dp,
+                                                color = colorScheme.onSurface,
+                                                shape = RoundedCornerShape(6.dp),
+                                            ),
+                                        contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.FolderOpen,
-                                            contentDescription = stringResource(DesignSystemR.string.tabs),
-                                            modifier = Modifier.size(20.dp),
+                                        Text(
+                                            text = if (tabCount > 99) "99" else "$tabCount",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colorScheme.onSurface,
                                         )
                                     }
                                 } else {
@@ -1449,7 +1471,10 @@ private fun TabsBottomSheet(
     onCloseTab: (Int) -> Unit,
     onAddTab: () -> Unit,
     onDismiss: () -> Unit,
+    volumes: List<StorageVolume> = emptyList(),
 ) {
+    val storageFallback = stringResource(DesignSystemR.string.storage)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -1492,7 +1517,7 @@ private fun TabsBottomSheet(
             ) {
                 itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
                     val isSelected = index == selectedTabIndex
-                    val tabTitle = tab.path.trimEnd('/').substringAfterLast('/').ifBlank { "/" }
+                    val tabTitle = resolveTabLabel(tab.path, volumes, storageFallback)
                     Surface(
                         onClick = { onSelectTab(index) },
                         shape = RoundedCornerShape(16.dp),
@@ -1684,6 +1709,8 @@ private fun SelectionMoreBottomSheet(
     canDelete: Boolean,
     canCompress: Boolean,
     canWatchIntegrity: Boolean,
+    canHexView: Boolean = false,
+    canQueueExtract: Boolean = false,
     onDismiss: () -> Unit,
     onShare: () -> Unit,
     onSendNearby: () -> Unit,
@@ -1697,6 +1724,7 @@ private fun SelectionMoreBottomSheet(
     onAddToVault: () -> Unit,
     onWatchIntegrity: () -> Unit,
     onHexView: () -> Unit,
+    onQueueExtract: () -> Unit = {},
     onProperties: () -> Unit,
     onPermanentDelete: () -> Unit,
 ) {
@@ -1718,6 +1746,14 @@ private fun SelectionMoreBottomSheet(
                 modifier = Modifier.padding(horizontal = 6.dp),
             )
 
+            if (insideArchive && canQueueExtract) {
+                FolioSegmentedColumn {
+                    FolioSegmentedCard(index = 0, count = 1, onClick = onQueueExtract) {
+                        SheetActionRow(Icons.Rounded.Unarchive, stringResource(DesignSystemR.string.queue_extract), null)
+                    }
+                }
+            }
+
             if (!insideArchive) {
                 FolioSegmentedColumn {
                     FolioSegmentedCard(index = 0, count = 3, onClick = onShare) {
@@ -1733,11 +1769,12 @@ private fun SelectionMoreBottomSheet(
 
                 FolioSegmentedColumn {
                     val editRows = buildList<Triple<ImageVector, String, () -> Unit>> {
+                        if (canQueueExtract) add(Triple(Icons.Rounded.Unarchive, stringResource(DesignSystemR.string.queue_extract), onQueueExtract))
                         if (selectedCount == 1) add(Triple(Icons.Rounded.Edit, stringResource(DesignSystemR.string.rename), onRename))
                         add(Triple(Icons.Rounded.EditNote, stringResource(DesignSystemR.string.batch_rename), onBatchRename))
                         if (canCompress) add(Triple(Icons.Rounded.FolderZip, stringResource(DesignSystemR.string.compress), onCompress))
                         add(Triple(Icons.Rounded.Label, stringResource(DesignSystemR.string.set_tags), onTag))
-                        if (selectedCount == 1) add(Triple(Icons.Rounded.Code, stringResource(DesignSystemR.string.hex_view), onHexView))
+                        if (canHexView) add(Triple(Icons.Rounded.Code, stringResource(DesignSystemR.string.hex_view), onHexView))
                     }
                     editRows.forEachIndexed { idx, (icon, label, action) ->
                         FolioSegmentedCard(index = idx, count = editRows.size, onClick = action) {

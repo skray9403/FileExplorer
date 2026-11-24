@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Lightweight vertical gradient scrim for floating top-bars.
- * Avoids offscreen GPU compositing passes.
+ * Subtle gallery-style vertical gradient scrim behind floating top pills.
+ * Keeps content legible under status bar without a heavy opaque band.
  */
 @Composable
 fun FolioTopScrim(
@@ -40,10 +40,10 @@ fun FolioTopScrim(
             .height(height)
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        baseColor.copy(alpha = 0.92f),
-                        baseColor.copy(alpha = 0.65f),
-                        Color.Transparent,
+                    colorStops = arrayOf(
+                        0.0f to baseColor.copy(alpha = 0.68f),
+                        0.55f to baseColor.copy(alpha = 0.28f),
+                        1.0f to Color.Transparent,
                     ),
                 ),
             ),
@@ -51,9 +51,7 @@ fun FolioTopScrim(
 }
 
 /**
- * Offscreen alpha feather mask for the top viewport edge.
- * Lets full-bleed scrollable lists dissolve smoothly behind a transparent floating top bar
- * without abrupt hard clipping or theme color mismatches.
+ * Legacy offscreen alpha feather mask retained for untouched screens (e.g. SecurityScreen).
  */
 fun Modifier.topEdgeFeatherFade(
     opaqueStartDp: Dp = 64.dp,
@@ -81,10 +79,6 @@ fun Modifier.topEdgeFeatherFade(
         )
     }
 
-/**
- * Pixel / Material 3 Expressive Segmented Card Stack shape helper:
- * 24.dp outer corners, 6.dp inner corners, paired with 2.dp vertical spacing.
- */
 fun folioSegmentedCardShape(index: Int, count: Int): Shape {
     if (count <= 1) return RoundedCornerShape(24.dp)
     return when (index) {

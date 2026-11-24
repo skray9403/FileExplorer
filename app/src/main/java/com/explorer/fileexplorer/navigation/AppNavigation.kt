@@ -224,6 +224,7 @@ fun AppNavigation(
                         onOpenRootModules = { navController.navigate(Routes.ROOT_MODULES) },
                         onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                         onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                        onOpenNetwork = { navController.navigate(Routes.NETWORK) },
                     )
                 }
 
