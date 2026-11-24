@@ -48,7 +48,6 @@ import com.explorer.fileexplorer.feature.search.SearchScreen
 import com.explorer.fileexplorer.feature.search.TagsScreen
 import com.explorer.fileexplorer.feature.security.SecurityScreen
 import com.explorer.fileexplorer.feature.settings.SettingsScreen
-import com.explorer.fileexplorer.feature.tools.ToolsHubScreen
 import com.explorer.fileexplorer.feature.transfer.TransferQueueScreen
 
 object Routes {
