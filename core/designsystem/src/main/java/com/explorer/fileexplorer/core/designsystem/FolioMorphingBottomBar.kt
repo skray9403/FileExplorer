@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -386,7 +387,7 @@ fun FolioMorphingBottomBar(
                     ) {
                         AnimatedContent(
                             targetState = leftKind,
-                            transitionSpec = { folioInnerMorphSpec(reducedMotion) },
+                            transitionSpec = { folioInnerMorphSpec(reducedMotion, fastSpatialSpec) },
                             label = "dockLeftContent",
                         ) { kind ->
                             when (kind) {
@@ -711,7 +712,7 @@ fun FolioMorphingBottomBar(
                         ) {
                             AnimatedContent(
                                 targetState = rightKind,
-                                transitionSpec = { folioInnerMorphSpec(reducedMotion) },
+                                transitionSpec = { folioInnerMorphSpec(reducedMotion, fastSpatialSpec) },
                                 label = "dockRightContent",
                                 modifier = Modifier.fillMaxSize(),
                             ) { kind ->
@@ -973,16 +974,18 @@ private fun FolioIconPillButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-private fun <S> AnimatedContentTransitionScope<S>.folioInnerMorphSpec(reducedMotion: Boolean) =
+private fun <S> AnimatedContentTransitionScope<S>.folioInnerMorphSpec(
+    reducedMotion: Boolean,
+    spatialSpec: FiniteAnimationSpec<Float>,
+) =
     if (reducedMotion) {
         fadeIn(tween(70)) togetherWith fadeOut(tween(50))
     } else {
         (fadeIn(tween(durationMillis = 150, delayMillis = 55, easing = LinearEasing)) +
-            scaleIn(initialScale = 0.94f, animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()))
+            scaleIn(initialScale = 0.94f, animationSpec = spatialSpec))
             .togetherWith(
                 fadeOut(tween(durationMillis = 65, easing = LinearEasing)) +
-                    scaleOut(targetScale = 0.94f, animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()),
+                    scaleOut(targetScale = 0.94f, animationSpec = spatialSpec),
             )
             .using(SizeTransform(clip = false))
     }
