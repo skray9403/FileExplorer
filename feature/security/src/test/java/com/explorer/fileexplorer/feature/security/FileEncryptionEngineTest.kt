@@ -84,7 +84,7 @@ class FileEncryptionEngineTest {
             input = ByteArrayInputStream(encryptedBytes),
             output = outDecrypted,
             v2KekProvider = { key },
-            v1KeyProvider = { key },
+            v1LegacyKeyProvider = { key },
         )
 
         assertEquals(originalName, restoredName)
@@ -112,7 +112,7 @@ class FileEncryptionEngineTest {
                 input = ByteArrayInputStream(encrypted),
                 output = ByteArrayOutputStream(),
                 v2KekProvider = { key },
-                v1KeyProvider = { key },
+                v1LegacyKeyProvider = { key },
             )
         }
     }
@@ -128,7 +128,7 @@ class FileEncryptionEngineTest {
             input = ByteArrayInputStream(v1Encrypted),
             output = outDecrypted,
             v2KekProvider = { key },
-            v1KeyProvider = { key },
+            v1LegacyKeyProvider = { key },
         )
 
         assertEquals(originalName, restoredName)

@@ -546,7 +546,6 @@ fun BrowserScreen(
         } else {
             emptyList()
         }
-        dockController.selectionMoreItems = dockController.selectionPrimaryItems
         dockController.canPaste = state.canPaste
         dockController.onPaste = viewModel::paste
         dockController.onExecuteClipboardTask = if (state.insideArchive) null else viewModel::executeClipboardTask
