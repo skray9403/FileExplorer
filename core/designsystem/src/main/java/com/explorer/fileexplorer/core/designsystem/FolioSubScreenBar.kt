@@ -304,3 +304,7 @@ fun FolioSubScreenBottomBar(
         }
     }
 }
+
+object FolioSubScreenBarDefaults {
+    val BottomBarHeight = 64.dp
+}
