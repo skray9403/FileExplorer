@@ -105,6 +105,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -221,6 +222,23 @@ fun PreviewBrowserScreen(
     val activeTabId = tabs.getOrNull(selectedTabIndex)?.id ?: 1L
     val listState = tabListStates.getOrPut(activeTabId) { LazyListState() }
     val gridState = tabGridStates.getOrPut(activeTabId) { LazyGridState() }
+
+    LaunchedEffect(listState, gridState, viewMode) {
+        var previousOffset = 0
+        snapshotFlow {
+            if (viewMode == PreviewViewMode.GRID) {
+                gridState.firstVisibleItemIndex * 10_000 + gridState.firstVisibleItemScrollOffset
+            } else {
+                listState.firstVisibleItemIndex * 10_000 + listState.firstVisibleItemScrollOffset
+            }
+        }.collect { offset ->
+            when {
+                offset > previousOffset + 2_000 -> dockController.onFastScrollDown()
+                offset < previousOffset - 2_000 || offset == 0 -> dockController.onFastScrollUp()
+            }
+            previousOffset = offset
+        }
+    }
 
     val pagerState = rememberPagerState(
         initialPage = selectedTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)),
@@ -346,6 +364,25 @@ fun PreviewBrowserScreen(
         )
         dockController.selectionSecondaryItems = listOf(
             FolioFabMenuAction(
+                icon = Icons.Rounded.Add,
+                labelRes = DesignSystemR.string.open_in_new_tab,
+                onClick = {
+                    selectedPaths.firstOrNull()?.let { selected ->
+                        openNewTab(selected.substringBeforeLast('/', PreviewMockData.ROOT_PATH))
+                    }
+                },
+            ),
+            FolioFabMenuAction(
+                icon = Icons.Rounded.ViewColumn,
+                labelRes = DesignSystemR.string.open_in_split_tab,
+                onClick = {
+                    selectedPaths.firstOrNull()?.let { selected ->
+                        openNewTab(selected.substringBeforeLast('/', PreviewMockData.ROOT_PATH))
+                    }
+                    toastMsg(DesignSystemR.string.open_in_split_tab)
+                },
+            ),
+            FolioFabMenuAction(
                 icon = Icons.Rounded.Lock,
                 labelRes = DesignSystemR.string.encrypt_files,
                 onClick = {
@@ -454,6 +491,9 @@ fun PreviewBrowserScreen(
                 if (isFolderBack) {
                     backSwipeEdge = event.swipeEdge
                     backPreviewAnim.snapTo(event.progress)
+                    dockController.predictiveBackProgress = event.progress
+                    dockController.predictiveBackEdgeSign =
+                        if (event.swipeEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
                 }
             }
             when {
@@ -466,8 +506,10 @@ fun PreviewBrowserScreen(
                 else -> navigateUp()
             }
             backPreviewAnim.animateTo(0f, backSpring)
+            dockController.predictiveBackProgress = 0f
         } catch (_: CancellationException) {
             backPreviewAnim.animateTo(0f, backSpring)
+            dockController.predictiveBackProgress = 0f
         }
     }
 
@@ -638,6 +680,7 @@ fun PreviewBrowserScreen(
                     navigateTo(path)
                 },
                 onOpenLocations = { showLocationsSheet = true },
+                onOpenNewTab = { openNewTab(currentPath) },
                 onClearSelection = { selectedPaths = emptySet() },
                 onToggleHidden = { showHidden = !showHidden },
                 onToggleColumn = { col ->
@@ -733,6 +776,7 @@ private fun PreviewTopBar(
     onToggleBreadcrumb: () -> Unit,
     onBreadcrumbNavigate: (String) -> Unit,
     onOpenLocations: () -> Unit,
+    onOpenNewTab: () -> Unit,
     onClearSelection: () -> Unit,
     onToggleHidden: () -> Unit,
     onToggleColumn: (PreviewFileColumn) -> Unit,
@@ -775,9 +819,9 @@ private fun PreviewTopBar(
                 }
             }
         } else {
-            // Left Locations pill
+            // Left new-tab pill
             Surface(
-                onClick = onOpenLocations,
+                onClick = onOpenNewTab,
                 shape = CircleShape,
                 color = colorScheme.surfaceContainerHighest.copy(alpha = 0.94f),
                 contentColor = colorScheme.onSurface,
@@ -789,8 +833,8 @@ private fun PreviewTopBar(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Rounded.Storage,
-                        contentDescription = stringResource(DesignSystemR.string.locations),
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(DesignSystemR.string.new_tab),
                         modifier = Modifier.size(20.dp),
                     )
                 }
