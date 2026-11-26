@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.rounded.Add
 
 import android.content.Context
@@ -195,38 +196,18 @@ fun RootModulesScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.root_modules)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::refresh, enabled = !state.isLoading && !state.isInstalling) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(DesignSystemR.string.refresh_modules))
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                text = { Text(stringResource(DesignSystemR.string.install_zip)) },
-                icon = { Icon(Icons.Filled.Archive, contentDescription = null) },
-                onClick = {
-                    if (!state.isLoading && !state.isInstalling) {
-                        picker.launch(arrayOf("application/zip", "application/octet-stream"))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .padding(top = statusBarTop, bottom = FolioSubScreenBarDefaults.BottomBarHeight + navBarBottom),
         ) {
             if (state.isInstalling) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             RootModulesHeader(
@@ -240,7 +221,7 @@ fun RootModulesScreen(
                     modifier = Modifier.fillMaxWidth().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CircularProgressIndicator()
+                    LoadingIndicator()
                 }
             } else if (state.error != null) {
                 Button(onClick = viewModel::refresh, modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -251,16 +232,43 @@ fun RootModulesScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        top = 8.dp,
+                        bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+                        start = 16.dp,
+                        end = 16.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(state.modules, key = { it.id }) { module ->
                         RootModuleCard(module = module, onEnabledChange = { enabled -> viewModel.setEnabled(module, enabled) })
                     }
-                    item { Spacer(Modifier.height(88.dp)) }
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.root_modules),
+            onNavigateBack = onNavigateBack,
+            fabIcon = Icons.Filled.Archive,
+            fabContentDescription = stringResource(DesignSystemR.string.install_zip),
+            onFabClick = {
+                if (!state.isLoading && !state.isInstalling) {
+                    picker.launch(arrayOf("application/zip", "application/octet-stream"))
+                }
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
