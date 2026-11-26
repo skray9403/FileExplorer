@@ -1,5 +1,6 @@
 package com.explorer.fileexplorer.core.designsystem
 
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -16,18 +17,18 @@ val M3StandardEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
  * Centralized motion tokens from Monomail foundation for consistent physics across Folio.
  */
 object MonoSpring {
-    fun <T> micro() = spring<T>(dampingRatio = 0.82f, stiffness = 900f)
-    fun <T> spatial() = spring<T>(dampingRatio = 0.76f, stiffness = 420f)
-    fun <T> expressive() = spring<T>(dampingRatio = 0.64f, stiffness = 320f)
-    fun <T> dismiss() = spring<T>(dampingRatio = 0.88f, stiffness = 650f)
+    fun <T> micro(): AnimationSpec<T> = spring<T>(dampingRatio = 0.82f, stiffness = 900f)
+    fun <T> spatial(): AnimationSpec<T> = spring<T>(dampingRatio = 0.76f, stiffness = 420f)
+    fun <T> expressive(): AnimationSpec<T> = spring<T>(dampingRatio = 0.64f, stiffness = 320f)
+    fun <T> dismiss(): AnimationSpec<T> = spring<T>(dampingRatio = 0.88f, stiffness = 650f)
 
     // Backwards-compatible aliases for existing call sites.
-    fun <T> bouncy() = micro()
-    fun <T> gentle() = spatial()
-    fun <T> snappy() = expressive()
-    fun <T> expressiveSpatial() = expressive()
+    fun <T> bouncy(): AnimationSpec<T> = micro()
+    fun <T> gentle(): AnimationSpec<T> = spatial()
+    fun <T> snappy(): AnimationSpec<T> = expressive()
+    fun <T> expressiveSpatial(): AnimationSpec<T> = expressive()
 
-    fun <T> noBounceColor() = spring<T>(
+    fun <T> noBounceColor(): AnimationSpec<T> = spring<T>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = 1400f,
     )
