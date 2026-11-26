@@ -189,24 +189,24 @@ fun ShareServerScreen(
     var showPassword by remember { mutableStateOf(false) }
     val running = state.status.isRunning
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.share_server)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(
+                    top = statusBarTop + 16.dp,
+                    bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+                    start = 20.dp,
+                    end = 20.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ShareServerStatusCard(state.status)
@@ -366,6 +366,22 @@ fun ShareServerScreen(
             }
             Spacer(Modifier.height(8.dp))
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.share_server),
+            onNavigateBack = onNavigateBack,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 

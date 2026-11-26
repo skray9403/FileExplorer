@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -442,7 +443,7 @@ private fun ConnectionListItem(
         trailingContent = {
             Row {
                 if (isConnecting) {
-                    LoadingIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    LoadingIndicator(Modifier.size(24.dp))
                 } else if (isActive) {
                     IconButton(onClick = onBrowse) { Icon(Icons.Filled.FolderOpen, stringResource(DesignSystemR.string.browse)) }
                     IconButton(onClick = onDisconnect) { Icon(Icons.Filled.LinkOff, stringResource(DesignSystemR.string.disconnect)) }
@@ -635,7 +636,7 @@ private fun ConnectionFormDialog(
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (isTesting) {
-                    LoadingIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    LoadingIndicator(Modifier.size(24.dp))
                 } else {
                     TextButton(onClick = { onTest(buildEntity()) }, enabled = host.isNotBlank()) { Text(stringResource(DesignSystemR.string.test)) }
                 }

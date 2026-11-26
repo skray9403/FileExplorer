@@ -92,35 +92,31 @@ fun TransferQueueScreen(
     var bandwidthTask by remember { mutableStateOf<TransferQueueTask?>(null) }
     val conflictTask = tasks.firstOrNull { it.state == TransferQueueState.WAITING_CONFLICT && it.conflict != null }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.transfer_queue)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = viewModel::clearFinished,
-                        enabled = tasks.any { it.isTerminal },
-                    ) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = stringResource(DesignSystemR.string.clear))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         if (tasks.isEmpty()) {
             Box(
-                modifier = Modifier.padding(padding).fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = statusBarTop, bottom = FolioSubScreenBarDefaults.BottomBarHeight + navBarBottom),
                 contentAlignment = Alignment.Center,
             ) { Text(stringResource(DesignSystemR.string.no_transfers_queued), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
             LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    top = statusBarTop + 16.dp,
+                    bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+                    start = 16.dp,
+                    end = 16.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(tasks, key = { it.id }) { task ->
@@ -139,6 +135,25 @@ fun TransferQueueScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.transfer_queue),
+            onNavigateBack = onNavigateBack,
+            fabIcon = if (tasks.any { it.isTerminal }) Icons.Filled.DeleteSweep else null,
+            fabContentDescription = stringResource(DesignSystemR.string.clear),
+            onFabClick = if (tasks.any { it.isTerminal }) viewModel::clearFinished else null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     bandwidthTask?.let { task ->
@@ -160,8 +175,6 @@ fun TransferQueueScreen(
     }
 }
 
-@Composable
-@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TransferQueueTaskCard(
     task: TransferQueueTask,
