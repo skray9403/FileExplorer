@@ -706,9 +706,6 @@ fun FolioMorphingBottomBar(
                                 border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                                 modifier = Modifier
                                     .wrapContentWidth()
-                                    .animateContentSize(
-                                        animationSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec(),
-                                    )
                                     .height(dockPillHeight)
                                     .clip(CircleShape),
                             ) {

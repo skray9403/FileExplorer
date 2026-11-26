@@ -125,30 +125,10 @@ fun AppNavigation(
                 navController = navController,
                 startDestination = Routes.BROWSER,
                 modifier = Modifier.fillMaxSize(),
-                enterTransition = {
-                    fadeIn(tween(180)) + slideInHorizontally(
-                        animationSpec = tween(240),
-                        initialOffsetX = { width -> width / 14 },
-                    )
-                },
-                exitTransition = {
-                    fadeOut(tween(120)) + slideOutHorizontally(
-                        animationSpec = tween(180),
-                        targetOffsetX = { width -> -width / 24 },
-                    )
-                },
-                popEnterTransition = {
-                    fadeIn(tween(200)) + androidx.compose.animation.scaleIn(
-                        animationSpec = tween(220),
-                        initialScale = 0.94f,
-                    )
-                },
-                popExitTransition = {
-                    fadeOut(tween(160)) + androidx.compose.animation.scaleOut(
-                        animationSpec = tween(200),
-                        targetScale = 0.92f,
-                    )
-                },
+                enterTransition = { fadeIn(tween(150)) },
+                exitTransition = { fadeOut(tween(110)) },
+                popEnterTransition = { fadeIn(tween(150)) },
+                popExitTransition = { fadeOut(tween(110)) },
             ) {
                 composable(Routes.BROWSER) {
                     BrowserScreen(

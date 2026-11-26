@@ -13,6 +13,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
+import android.content.ContextWrapper
+import android.app.Activity
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
@@ -324,7 +326,7 @@ fun BrowserScreen(
                 is BrowserEvent.ShareFiles -> shareFiles(context, event.items)
                 is BrowserEvent.SendNearbyFiles -> sendNearbyFiles(context, event.items)
                 is BrowserEvent.RequestEncrypt -> {
-                    val activity = context as? FragmentActivity
+                    val activity = context.findActivity() as? FragmentActivity
                     if (activity != null && securityEntryPoint.securityRepository().canUseBiometrics()) {
                         securityEntryPoint.biometricHelper().showBiometricPrompt(
                             activity = activity,
@@ -819,8 +821,7 @@ fun BrowserScreen(
                                 onDrop = { event ->
                                     val uris = event.externalClipUris()
                                     if (uris.isEmpty()) return@folioDropTarget false
-                                    val activity = context as? FragmentActivity
-                                        ?: (context as? android.app.Activity)
+                                    val activity = context.findActivity()
                                     val perm = activity?.requestDragAndDropPermissions(event.toAndroidDragEvent())
                                     viewModel.importDroppedUris(context, uris)
                                     perm?.release()
@@ -831,7 +832,7 @@ fun BrowserScreen(
                         AnimatedContent(
                             targetState = if (page == state.selectedTabIndex) state.currentPath else "",
                             transitionSpec = {
-                                (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 12 }).togetherWith(fadeOut(tween(90)))
+                                fadeIn(tween(120)).togetherWith(fadeOut(tween(90)))
                             },
                             label = "folder_navigation_animation",
                             modifier = Modifier.fillMaxSize(),
@@ -2166,4 +2167,14 @@ private fun launchShare(context: Context, items: List<FileItem>, chooserTitle: S
     } catch (_: Exception) {
         Toast.makeText(context, context.getString(DesignSystemR.string.share_failed), Toast.LENGTH_SHORT).show()
     }
+}
+
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return current as? Activity
 }
