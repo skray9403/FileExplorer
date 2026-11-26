@@ -1,3 +1,7 @@
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.Launch
+import androidx.compose.material.icons.rounded.Info
 package com.explorer.fileexplorer.feature.apps
 
 import android.Manifest
@@ -256,8 +260,7 @@ class AppsViewModel @Inject constructor(
 
 // -- Screen --
 
-@OptIn(ExperimentalMaterial3Api::class)
-@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppsScreen(
     viewModel: AppsViewModel = hiltViewModel(),
