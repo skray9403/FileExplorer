@@ -6,7 +6,6 @@ import androidx.activity.compose.PredictiveBackHandler
 import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
-import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import kotlin.coroutines.cancellation.CancellationException
 

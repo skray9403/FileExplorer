@@ -115,7 +115,6 @@ import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
-import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.topEdgeFeatherFade
 import com.explorer.fileexplorer.core.storage.KeyHardwareLevel

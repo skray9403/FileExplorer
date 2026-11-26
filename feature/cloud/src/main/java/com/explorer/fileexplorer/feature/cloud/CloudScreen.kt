@@ -4,7 +4,6 @@ import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
-import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
