@@ -40,6 +40,10 @@ import com.explorer.fileexplorer.core.model.CapabilityStatus
 import com.explorer.fileexplorer.core.model.RepositoryCapabilityMatrix
 import com.explorer.fileexplorer.core.model.RepositoryFeature
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioAccentPalette
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Check
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AdminPanelSettings
@@ -385,6 +389,9 @@ class SettingsViewModel @Inject constructor(
     fun toggleFoldersFirst() { viewModelScope.launch { repo.update(SettingsKeys.FOLDERS_FIRST, !state.value.foldersFirst) } }
     fun toggleConfirmDelete() { viewModelScope.launch { repo.update(SettingsKeys.CONFIRM_DELETE, !state.value.confirmDelete) } }
     fun setThemeMode(mode: ThemeMode) { viewModelScope.launch { repo.update(SettingsKeys.THEME_MODE, mode.name) } }
+    fun setUseDynamicColor(use: Boolean) { viewModelScope.launch { repo.update(SettingsKeys.USE_DYNAMIC_COLOR, use) } }
+    fun setAccentPalette(palette: String) { viewModelScope.launch { repo.update(SettingsKeys.ACCENT_PALETTE, palette) } }
+    fun setCornerStyle(style: String) { viewModelScope.launch { repo.update(SettingsKeys.CORNER_STYLE, style) } }
     fun setTrashTtlDays(days: Int) { viewModelScope.launch { repo.update(SettingsKeys.TRASH_TTL_DAYS, days) } }
     fun toggleCompactDensity() { viewModelScope.launch { repo.update(SettingsKeys.COMPACT_DENSITY, !state.value.compactDensity) } }
     fun toggleShowDirectorySizes() { viewModelScope.launch { repo.update(SettingsKeys.SHOW_DIRECTORY_SIZES, !state.value.showDirectorySizes) } }

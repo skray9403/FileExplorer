@@ -899,11 +899,6 @@ fun SecurityScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                val scale = 1f - (backProgress * 0.05f)
-                scaleX = scale
-                scaleY = scale
-            }
             .background(MaterialTheme.colorScheme.background),
     ) {
         LazyColumn(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 
@@ -108,22 +109,18 @@ fun TagsScreen(
         viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.tags)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .padding(top = statusBarTop, bottom = FolioSubScreenBarDefaults.BottomBarInset + navBarBottom),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -179,5 +176,25 @@ fun TagsScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
+        )
+
+        FolioBottomScrim(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.tags),
+            onNavigateBack = onNavigateBack,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = FolioSubScreenBarDefaults.BottomBarInset + navBarBottom),
+        )
     }
 }
