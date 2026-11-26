@@ -1,3 +1,13 @@
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
 package com.explorer.fileexplorer.feature.network
 
 import android.widget.Toast
@@ -247,6 +257,7 @@ class NetworkViewModel @Inject constructor(
 // -- Screens --
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NetworkScreen(
     viewModel: NetworkViewModel = hiltViewModel(),
@@ -295,17 +306,15 @@ fun NetworkScreen(
     }
 
     // Connection list
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.network)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } },
-                actions = { IconButton(onClick = { viewModel.showForm() }) { Icon(Icons.Filled.Add, stringResource(DesignSystemR.string.add_connection)) } },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         if (state.connections.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().padding(top = statusBarTop + 16.dp, bottom = 128.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Filled.Lan, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f))
                     Spacer(Modifier.height(16.dp))
@@ -316,8 +325,13 @@ fun NetworkScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 136.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    top = statusBarTop + 16.dp,
+                    bottom = 128.dp,
+                    start = 16.dp,
+                    end = 16.dp,
+                ),
             ) {
                 items(state.connections, key = { it.id }) { conn ->
                     ConnectionListItem(
@@ -333,6 +347,25 @@ fun NetworkScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.network),
+            onNavigateBack = onNavigateBack,
+            fabIcon = Icons.Rounded.Add,
+            fabContentDescription = stringResource(DesignSystemR.string.add_connection),
+            onFabClick = { viewModel.showForm() },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -409,7 +442,7 @@ private fun ConnectionListItem(
         trailingContent = {
             Row {
                 if (isConnecting) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    LoadingIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else if (isActive) {
                     IconButton(onClick = onBrowse) { Icon(Icons.Filled.FolderOpen, stringResource(DesignSystemR.string.browse)) }
                     IconButton(onClick = onDisconnect) { Icon(Icons.Filled.LinkOff, stringResource(DesignSystemR.string.disconnect)) }
@@ -463,7 +496,7 @@ private fun RemoteBrowserScreen(
     ) { padding ->
         if (isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                LoadingIndicator()
             }
         } else if (files.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -601,7 +634,7 @@ private fun ConnectionFormDialog(
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (isTesting) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    LoadingIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
                     TextButton(onClick = { onTest(buildEntity()) }, enabled = host.isNotBlank()) { Text(stringResource(DesignSystemR.string.test)) }
                 }

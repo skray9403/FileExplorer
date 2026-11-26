@@ -244,7 +244,7 @@ fun BrowserScreen(
     var breadcrumbExpanded by remember { mutableStateOf(false) }
     var backPreviewProgress by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(state.currentPath, breadcrumbExpanded, state.inlineSearchActive, state.selectionMode) {
+    LaunchedEffect(state.currentPath, state.inlineSearchActive, state.selectionMode) {
         breadcrumbExpanded = false
         backPreviewProgress = 0f
     }
@@ -842,7 +842,7 @@ fun BrowserScreen(
                                             onLongClick = { viewModel.onItemLongClick(item) },
                                             modifier = Modifier
                                                 .folioDragSource(
-                                                    enabled = true,
+                                                    enabled = item.path in state.selectedItems,
                                                     context = context,
                                                     itemsProvider = {
                                                         if (item.path in state.selectedItems) selectedFileObjects else listOf(item)
@@ -910,7 +910,7 @@ fun BrowserScreen(
                                             } else null,
                                             modifier = Modifier
                                                 .folioDragSource(
-                                                    enabled = true,
+                                                    enabled = item.path in state.selectedItems,
                                                     context = context,
                                                     itemsProvider = {
                                                         if (item.path in state.selectedItems) selectedFileObjects else listOf(item)

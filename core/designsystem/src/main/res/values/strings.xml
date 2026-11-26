@@ -568,4 +568,22 @@
     <string name="sort_size">Size</string>
     <string name="sort_date">Date</string>
     <string name="sort_type">Type</string>
+    <string name="appearance">Appearance</string>
+    <string name="dynamic_color_title">Material You dynamic color</string>
+    <string name="dynamic_color_desc">Match your Android wallpaper &amp; style palette</string>
+    <string name="accent_palette">Accent palette</string>
+    <string name="palette_sage">Sage</string>
+    <string name="palette_ocean">Ocean</string>
+    <string name="palette_violet">Violet</string>
+    <string name="palette_terracotta">Terracotta</string>
+    <string name="corner_style">Corner shape</string>
+    <string name="corner_square">Compact</string>
+    <string name="corner_rounded">Rounded</string>
+    <string name="corner_extra">Expressive</string>
+    <string name="scan_now">Scan now</string>
+    <string name="scanning">Scanning…</string>
+    <string name="no_watched_paths">No watched paths yet.</string>
+    <string name="checking_root_env">Checking root environment…</string>
+    <string name="encrypted_volumes_requirements">Root access and gocryptfs or EncFS with FUSE support are required.</string>
+    <string name="no_encrypted_volumes_mounted">No encrypted volumes mounted.</string>
 </resources>

@@ -102,6 +102,9 @@ object SettingsKeys {
     val SHOW_DIRECTORY_SIZES = booleanPreferencesKey("show_directory_sizes")
     val SWIPE_LEFT_ACTION = stringPreferencesKey("swipe_left_action")
     val SWIPE_RIGHT_ACTION = stringPreferencesKey("swipe_right_action")
+    val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
+    val ACCENT_PALETTE = stringPreferencesKey("accent_palette")
+    val CORNER_STYLE = stringPreferencesKey("corner_style")
 }
 
 enum class ThumbnailCacheLocation(@androidx.annotation.StringRes val labelRes: Int, val key: String) {
@@ -172,6 +175,9 @@ data class SettingsState(
     val showDirectorySizes: Boolean = false,
     val swipeLeftAction: SwipeAction = SwipeAction.NONE,
     val swipeRightAction: SwipeAction = SwipeAction.NONE,
+    val useDynamicColor: Boolean = true,
+    val accentPalette: String = "SAGE",
+    val cornerStyle: String = "ROUNDED",
 )
 
 @Singleton
@@ -200,6 +206,9 @@ class SettingsRepository @Inject constructor(
             showDirectorySizes = prefs[SettingsKeys.SHOW_DIRECTORY_SIZES] ?: false,
             swipeLeftAction = SwipeAction.fromKey(prefs[SettingsKeys.SWIPE_LEFT_ACTION]),
             swipeRightAction = SwipeAction.fromKey(prefs[SettingsKeys.SWIPE_RIGHT_ACTION]),
+            useDynamicColor = prefs[SettingsKeys.USE_DYNAMIC_COLOR] ?: true,
+            accentPalette = prefs[SettingsKeys.ACCENT_PALETTE] ?: "SAGE",
+            cornerStyle = prefs[SettingsKeys.CORNER_STYLE] ?: "ROUNDED",
         )
     }
 
@@ -234,6 +243,9 @@ class SettingsRepository @Inject constructor(
                 showDirectorySizes = current.showDirectorySizes,
                 swipeLeftAction = current.swipeLeftAction.name,
                 swipeRightAction = current.swipeRightAction.name,
+                useDynamicColor = current.useDynamicColor,
+                accentPalette = current.accentPalette,
+                cornerStyle = current.cornerStyle,
             )
         },
     )
@@ -259,6 +271,9 @@ class SettingsRepository @Inject constructor(
                     preferences[SettingsKeys.SHOW_DIRECTORY_SIZES] = settings.showDirectorySizes
                     preferences[SettingsKeys.SWIPE_LEFT_ACTION] = settings.swipeLeftAction
                     preferences[SettingsKeys.SWIPE_RIGHT_ACTION] = settings.swipeRightAction
+                    preferences[SettingsKeys.USE_DYNAMIC_COLOR] = settings.useDynamicColor
+                    preferences[SettingsKeys.ACCENT_PALETTE] = settings.accentPalette
+                    preferences[SettingsKeys.CORNER_STYLE] = settings.cornerStyle
                 }
                 check(
                     ThumbnailCacheSettings.write(
@@ -285,6 +300,9 @@ class SettingsRepository @Inject constructor(
                         preferences[SettingsKeys.SHOW_DIRECTORY_SIZES] = previous.showDirectorySizes
                         preferences[SettingsKeys.SWIPE_LEFT_ACTION] = previous.swipeLeftAction
                         preferences[SettingsKeys.SWIPE_RIGHT_ACTION] = previous.swipeRightAction
+                        preferences[SettingsKeys.USE_DYNAMIC_COLOR] = previous.useDynamicColor
+                        preferences[SettingsKeys.ACCENT_PALETTE] = previous.accentPalette
+                        preferences[SettingsKeys.CORNER_STYLE] = previous.cornerStyle
                     }
                 }.onFailure(error::addSuppressed)
                 runCatching {
@@ -506,9 +524,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "headline") {
-                FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.tools_and_settings))
-            }
+
 
             // Tools & Utilities section 1: Activity & Storage
             item(key = "tools_storage_activity") {
@@ -570,13 +586,19 @@ fun SettingsScreen(
                 }
             }
 
-            // Theme section
-            item(key = "theme_section") {
+            // Appearance section
+            item(key = "appearance_section") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FolioSectionLabel(stringResource(DesignSystemR.string.theme))
-                    ThemeSelector(
-                        current = state.themeMode,
-                        onSelect = viewModel::setThemeMode,
+                    FolioSectionLabel(stringResource(DesignSystemR.string.appearance))
+                    AppearanceSection(
+                        themeMode = state.themeMode,
+                        useDynamicColor = state.useDynamicColor,
+                        accentPalette = state.accentPalette,
+                        cornerStyle = state.cornerStyle,
+                        onThemeModeSelect = viewModel::setThemeMode,
+                        onDynamicColorToggle = viewModel::setUseDynamicColor,
+                        onPaletteSelect = viewModel::setAccentPalette,
+                        onCornerStyleSelect = viewModel::setCornerStyle,
                     )
                 }
             }
@@ -620,12 +642,16 @@ fun SettingsScreen(
                         }
                     }
 
-                    ThumbnailCacheSettingsPanel(
-                        state = state,
-                        onSizeChange = viewModel::setThumbnailCacheSize,
-                        onLocationChange = viewModel::setThumbnailCacheLocation,
-                        onPurge = viewModel::purgeThumbnailCache,
-                    )
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 1) {
+                            ThumbnailCacheSettingsPanel(
+                                state = state,
+                                onSizeChange = viewModel::setThumbnailCacheSize,
+                                onLocationChange = viewModel::setThumbnailCacheLocation,
+                                onPurge = viewModel::purgeThumbnailCache,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -656,16 +682,22 @@ fun SettingsScreen(
             item(key = "gestures_section") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     FolioSectionLabel(stringResource(DesignSystemR.string.gestures))
-                    SwipeActionSelector(
-                        title = stringResource(DesignSystemR.string.swipe_left),
-                        current = state.swipeLeftAction,
-                        onSelect = viewModel::setSwipeLeftAction,
-                    )
-                    SwipeActionSelector(
-                        title = stringResource(DesignSystemR.string.swipe_right),
-                        current = state.swipeRightAction,
-                        onSelect = viewModel::setSwipeRightAction,
-                    )
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 2) {
+                            SwipeActionSelector(
+                                title = stringResource(DesignSystemR.string.swipe_left),
+                                current = state.swipeLeftAction,
+                                onSelect = viewModel::setSwipeLeftAction,
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 2) {
+                            SwipeActionSelector(
+                                title = stringResource(DesignSystemR.string.swipe_right),
+                                current = state.swipeRightAction,
+                                onSelect = viewModel::setSwipeRightAction,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -743,15 +775,15 @@ fun SettingsScreen(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
         FolioSubScreenBottomBar(
             title = stringResource(DesignSystemR.string.tools_and_settings),
             onNavigateBack = onNavigateBack,
             onFabClick = null,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-
-        FolioBottomScrim(
-            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -1036,6 +1068,7 @@ private fun SwipeActionSelector(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(stringResource(current.descriptionRes)) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
     FlowRow(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
@@ -1062,6 +1095,7 @@ private fun TrashTtlSelector(
     ListItem(
         headlineContent = { Text(stringResource(DesignSystemR.string.trash_auto_purge)) },
         supportingContent = { Text(stringResource(DesignSystemR.string.delete_trash_after_days, currentDays)) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
     FlowRow(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
@@ -1078,38 +1112,138 @@ private fun TrashTtlSelector(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ThemeSelector(
-    current: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
+private fun AppearanceSection(
+    themeMode: ThemeMode,
+    useDynamicColor: Boolean,
+    accentPalette: String,
+    cornerStyle: String,
+    onThemeModeSelect: (ThemeMode) -> Unit,
+    onDynamicColorToggle: (Boolean) -> Unit,
+    onPaletteSelect: (String) -> Unit,
+    onCornerStyleSelect: (String) -> Unit,
 ) {
-    val options = listOf(
-        ThemeMode.SYSTEM to (stringResource(DesignSystemR.string.system_default) to stringResource(DesignSystemR.string.follow_device_theme)),
-        ThemeMode.LIGHT to (stringResource(DesignSystemR.string.light) to stringResource(DesignSystemR.string.standard_light_surfaces)),
-        ThemeMode.DARK to (stringResource(DesignSystemR.string.dark) to stringResource(DesignSystemR.string.dark_theme_desc)),
-        ThemeMode.OLED to (stringResource(DesignSystemR.string.oled_true_black) to stringResource(DesignSystemR.string.pure_black_background)),
-        ThemeMode.DYNAMIC to (stringResource(DesignSystemR.string.material_you) to stringResource(DesignSystemR.string.wallpaper_colors)),
-    )
-    FolioSegmentedColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
-        options.forEachIndexed { index, (mode, labels) ->
-            val (title, subtitle) = labels
-            FolioSegmentedCard(
-                index = index,
-                count = options.size,
-                onClick = { onSelect(mode) },
-            ) {
+    val supportsDynamic = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    val cardCount = if (supportsDynamic) 4 else 3
+
+    FolioSegmentedColumn {
+        // Card 0: 4-way Theme Mode: System | Light | Dark | OLED
+        FolioSegmentedCard(index = 0, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.theme),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val modes = listOf(
+                        ThemeMode.SYSTEM to DesignSystemR.string.system_default,
+                        ThemeMode.LIGHT to DesignSystemR.string.light,
+                        ThemeMode.DARK to DesignSystemR.string.dark,
+                        ThemeMode.OLED to DesignSystemR.string.oled_true_black,
+                    )
+                    modes.forEach { (mode, labelRes) ->
+                        FilterChip(
+                            selected = themeMode == mode,
+                            onClick = { onThemeModeSelect(mode) },
+                            label = { Text(stringResource(labelRes)) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Card 1: Material You Dynamic Color Switch (Android 12+)
+        if (supportsDynamic) {
+            FolioSegmentedCard(index = 1, count = cardCount, onClick = { onDynamicColorToggle(!useDynamicColor) }) {
                 ListItem(
-                    headlineContent = { Text(title) },
-                    supportingContent = { Text(subtitle) },
+                    headlineContent = { Text(stringResource(DesignSystemR.string.dynamic_color_title)) },
+                    supportingContent = { Text(stringResource(DesignSystemR.string.dynamic_color_desc)) },
                     trailingContent = {
-                        RadioButton(
-                            selected = current == mode,
-                            onClick = { onSelect(mode) },
+                        Switch(
+                            checked = useDynamicColor,
+                            onCheckedChange = { onDynamicColorToggle(it) },
                         )
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+
+        // Card 2: 4 circular tonal swatch buttons (Sage, Ocean, Violet, Terracotta)
+        val paletteCardIndex = if (supportsDynamic) 2 else 1
+        FolioSegmentedCard(index = paletteCardIndex, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.accent_palette),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                ) {
+                    val palettes = listOf(
+                        FolioAccentPalette.SAGE to ("SAGE" to DesignSystemR.string.palette_sage),
+                        FolioAccentPalette.OCEAN to ("OCEAN" to DesignSystemR.string.palette_ocean),
+                        FolioAccentPalette.VIOLET to ("VIOLET" to DesignSystemR.string.palette_violet),
+                        FolioAccentPalette.TERRACOTTA to ("TERRACOTTA" to DesignSystemR.string.palette_terracotta),
+                    )
+                    palettes.forEach { (pal, info) ->
+                        val (key, labelRes) = info
+                        val isSelected = accentPalette.equals(key, ignoreCase = true)
+                        val swatchColor = com.explorer.fileexplorer.core.designsystem.paletteSwatchColor(pal)
+                        Surface(
+                            onClick = { onPaletteSelect(key) },
+                            shape = CircleShape,
+                            color = swatchColor,
+                            border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface) else null,
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            if (isSelected) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = stringResource(labelRes),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card 3: Corner Shape: Compact | Rounded | Expressive
+        val cornerCardIndex = if (supportsDynamic) 3 else 2
+        FolioSegmentedCard(index = cornerCardIndex, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.corner_style),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val corners = listOf(
+                        "SQUARE" to DesignSystemR.string.corner_square,
+                        "ROUNDED" to DesignSystemR.string.corner_rounded,
+                        "EXTRA" to DesignSystemR.string.corner_extra,
+                    )
+                    corners.forEach { (style, labelRes) ->
+                        FilterChip(
+                            selected = cornerStyle.equals(style, ignoreCase = true),
+                            onClick = { onCornerStyleSelect(style) },
+                            label = { Text(stringResource(labelRes)) },
+                        )
+                    }
+                }
             }
         }
     }

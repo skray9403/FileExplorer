@@ -22,6 +22,9 @@ data class PortableSettings(
     val showDirectorySizes: Boolean = false,
     val swipeLeftAction: String = "NONE",
     val swipeRightAction: String = "NONE",
+    val useDynamicColor: Boolean = true,
+    val accentPalette: String = "SAGE",
+    val cornerStyle: String = "ROUNDED",
 )
 
 /** Storage boundary used by [BackupManager] without coupling core data to a feature module. */
@@ -47,6 +50,8 @@ object PortableSettingsPolicy {
     private val themeValues = setOf("SYSTEM", "LIGHT", "DARK", "OLED", "DYNAMIC")
     private val trashTtlValues = setOf(7, 14, 30, 60, 90)
     private val swipeActionValues = setOf("NONE", "DELETE", "SHARE", "COMPRESS", "MOVE")
+    private val accentPaletteValues = setOf("SAGE", "OCEAN", "VIOLET", "TERRACOTTA")
+    private val cornerStyleValues = setOf("SQUARE", "ROUNDED", "EXTRA")
 
     fun validate(settings: PortableSettings) {
         validateEnum("defaultView", settings.defaultView, viewValues)
@@ -56,6 +61,8 @@ object PortableSettingsPolicy {
         validateEnum("themeMode", settings.themeMode, themeValues)
         validateEnum("swipeLeftAction", settings.swipeLeftAction, swipeActionValues)
         validateEnum("swipeRightAction", settings.swipeRightAction, swipeActionValues)
+        validateEnum("accentPalette", settings.accentPalette, accentPaletteValues)
+        validateEnum("cornerStyle", settings.cornerStyle, cornerStyleValues)
         if (settings.thumbnailSize !in MIN_THUMBNAIL_SIZE..MAX_THUMBNAIL_SIZE) {
             throw BackupFormatException("Backup field 'thumbnailSize' is outside its allowed range")
         }

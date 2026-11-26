@@ -29,6 +29,7 @@ fun FolioTopScrim(
     height: Dp,
     modifier: Modifier = Modifier,
     baseColor: Color = MaterialTheme.colorScheme.background,
+    solidStop: Float = 0.38f,
 ) {
     Spacer(
         modifier = modifier
@@ -37,8 +38,9 @@ fun FolioTopScrim(
             .background(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to baseColor.copy(alpha = 0.82f),
-                        0.60f to baseColor.copy(alpha = 0.36f),
+                        0.0f to baseColor,
+                        solidStop.coerceIn(0.1f, 0.6f) to baseColor,
+                        (solidStop + 0.25f).coerceAtMost(0.85f) to baseColor.copy(alpha = 0.50f),
                         1.0f to Color.Transparent,
                     ),
                 ),
@@ -155,4 +157,3 @@ fun FolioSectionLabel(
         modifier = modifier.padding(horizontal = 6.dp, vertical = 4.dp),
     )
 }
-

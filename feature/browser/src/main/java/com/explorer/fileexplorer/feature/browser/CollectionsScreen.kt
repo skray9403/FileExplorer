@@ -35,7 +35,8 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +75,7 @@ import com.explorer.fileexplorer.core.ui.FileListItem
 import kotlinx.coroutines.launch
 import java.io.File
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CollectionsScreen(
     onNavigateBack: () -> Unit = {},
@@ -87,6 +89,7 @@ fun CollectionsScreen(
     val selected = state.selectedCategory
     val dockController = LocalFolioDockController.current
     val listState = rememberLazyListState()
+    var inlineSearchOpen by remember { mutableStateOf(false) }
 
     val scrollThresholdPx = with(density) { 160.dp.toPx() }
     val showScrollToTop by remember(listState, scrollThresholdPx) {
@@ -95,16 +98,41 @@ fun CollectionsScreen(
         }
     }
 
-    LaunchedEffect(selected, showScrollToTop) {
+    LaunchedEffect(selected, showScrollToTop, inlineSearchOpen, state.searchQuery) {
         dockController.claimOwnership("collections")
         dockController.contextResetKey = "collections|${selected?.name ?: "root"}"
         dockController.isSubfolder = selected != null
-        dockController.onNavigateUp = { viewModel.closeCategory() }
-        dockController.onNavigateToRoot = { viewModel.closeCategory() }
+        dockController.onNavigateUp = {
+            if (inlineSearchOpen) {
+                inlineSearchOpen = false
+                viewModel.setSearchQuery("")
+            } else {
+                viewModel.closeCategory()
+            }
+        }
+        dockController.onNavigateToRoot = {
+            inlineSearchOpen = false
+            viewModel.setSearchQuery("")
+            viewModel.closeCategory()
+        }
         dockController.showScrollToTop = showScrollToTop
         dockController.onScrollToTop = { scope.launch { listState.animateScrollToItem(0) } }
         dockController.sortPrimaryItems = emptyList()
         dockController.fabMenuItems = emptyList()
+
+        if (selected == null) {
+            dockController.onInlineSearchOpen = null
+            dockController.inlineSearchActive = false
+        } else {
+            dockController.onInlineSearchOpen = { inlineSearchOpen = true }
+            dockController.inlineSearchActive = inlineSearchOpen
+            dockController.inlineSearchQuery = state.searchQuery
+            dockController.onInlineSearchQueryChange = viewModel::setSearchQuery
+            dockController.onInlineSearchClose = {
+                inlineSearchOpen = false
+                viewModel.setSearchQuery("")
+            }
+        }
     }
 
     DisposableEffect(Unit) {
@@ -156,7 +184,7 @@ fun CollectionsScreen(
                 if (state.isLoading && state.summaries.all { it.itemCount == 0 }) {
                     item(key = "collections_loading") {
                         Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            LoadingIndicator(modifier = Modifier.size(28.dp))
                         }
                     }
                 }
@@ -228,10 +256,10 @@ fun CollectionsScreen(
                 if (state.isLoading && state.files.isEmpty()) {
                     item(key = "cat_loading") {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            LoadingIndicator(modifier = Modifier.size(28.dp))
                         }
                     }
-                } else if (state.files.isEmpty()) {
+                } else if (state.displayedFiles.isEmpty()) {
                     item(key = "cat_empty") {
                         Text(
                             text = stringResource(DesignSystemR.string.no_indexed_files),
@@ -241,7 +269,7 @@ fun CollectionsScreen(
                         )
                     }
                 } else {
-                    items(state.files, key = { it.path }) { item ->
+                    items(state.displayedFiles, key = { it.path }) { item ->
                         FileListItem(
                             item = item,
                             onClick = { openCollectionFile(context, item) },
@@ -274,26 +302,7 @@ fun CollectionsScreen(
                 .align(Alignment.TopCenter),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected != null) {
-                Surface(
-                    onClick = viewModel::closeCategory,
-                    shape = CircleShape,
-                    color = floatingBubbleColor,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shadowElevation = 4.dp,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(DesignSystemR.string.back),
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
+
 
             Surface(
                 shape = CircleShape,

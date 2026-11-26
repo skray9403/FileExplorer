@@ -97,7 +97,6 @@ fun AppNavigation(
     val selectedDestination = when (currentRoute) {
         Routes.BROWSER, Routes.BROWSER_AT_PATH -> "browser"
         Routes.COLLECTIONS -> "collections"
-        Routes.TOOLS -> "tools"
         else -> null
     }
 

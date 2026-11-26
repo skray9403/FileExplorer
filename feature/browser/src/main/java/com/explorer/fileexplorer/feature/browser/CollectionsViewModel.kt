@@ -42,7 +42,11 @@ data class CollectionsUiState(
     val files: List<FileItem> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-)
+    val searchQuery: String = "",
+) {
+    val displayedFiles: List<FileItem>
+        get() = if (searchQuery.isBlank()) files else files.filter { it.name.contains(searchQuery.trim(), ignoreCase = true) }
+}
 
 @HiltViewModel
 class CollectionsViewModel @Inject constructor(
@@ -78,9 +82,13 @@ class CollectionsViewModel @Inject constructor(
         }
     }
 
+    fun setSearchQuery(query: String) {
+        _state.update { it.copy(searchQuery = query) }
+    }
+
     fun open(category: CollectionCategory) {
         viewModelScope.launch {
-            _state.update { it.copy(selectedCategory = category, files = emptyList(), isLoading = true, error = null) }
+            _state.update { it.copy(selectedCategory = category, files = emptyList(), searchQuery = "", isLoading = true, error = null) }
             runCatching { withContext(Dispatchers.IO) { queryFiles(category) } }
                 .onSuccess { files -> _state.update { it.copy(files = files, isLoading = false) } }
                 .onFailure { error ->
@@ -92,7 +100,7 @@ class CollectionsViewModel @Inject constructor(
     }
 
     fun closeCategory() {
-        _state.update { it.copy(selectedCategory = null, files = emptyList(), error = null) }
+        _state.update { it.copy(selectedCategory = null, files = emptyList(), searchQuery = "", error = null) }
     }
 
     private fun querySummary(category: CollectionCategory): CollectionSummary {

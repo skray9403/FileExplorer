@@ -727,11 +727,13 @@ fun FolioMorphingBottomBar(
                                                     onClick = controller.onNavigateUp,
                                                     onLongClick = controller.onNavigateToRoot,
                                                 )
-                                                FolioInnerCircleButton(
-                                                    icon = Icons.Rounded.Search,
-                                                    contentDescription = stringResource(R.string.search),
-                                                    onClick = triggerSearch,
-                                                )
+                                                if (hasSearch) {
+                                                    FolioInnerCircleButton(
+                                                        icon = Icons.Rounded.Search,
+                                                        contentDescription = stringResource(R.string.search),
+                                                        onClick = triggerSearch,
+                                                    )
+                                                }
                                                 FolioInnerCircleButton(
                                                     icon = Icons.Rounded.Home,
                                                     contentDescription = stringResource(R.string.home),
@@ -1072,8 +1074,10 @@ private fun FolioInnerCircleButton(
 
     Surface(
         shape = CircleShape,
-        color = colorScheme.surfaceContainerHighest,
+        color = colorScheme.surfaceContainerLowest,
         contentColor = colorScheme.onSurface,
+        border = BorderStroke(0.75.dp, colorScheme.outlineVariant.copy(alpha = 0.50f)),
+        shadowElevation = 2.dp,
         modifier = Modifier
             .size(42.dp)
             .graphicsLayer(scaleX = scale, scaleY = scale)

@@ -1,3 +1,13 @@
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
 package com.explorer.fileexplorer.feature.transfer
 
 import androidx.compose.foundation.layout.Arrangement
@@ -31,13 +41,12 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +84,7 @@ class TransferQueueViewModel @Inject constructor(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TransferQueueScreen(
     onNavigateBack: () -> Unit = {},
@@ -153,6 +163,8 @@ fun TransferQueueScreen(
 }
 
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@Composable
 private fun TransferQueueTaskCard(
     task: TransferQueueTask,
     canMoveUp: Boolean,
@@ -182,7 +194,7 @@ private fun TransferQueueTaskCard(
                 overflow = TextOverflow.Ellipsis,
             )
             if (task.totalBytes > 0) {
-                LinearProgressIndicator(progress = { task.progress }, modifier = Modifier.fillMaxWidth())
+                LinearWavyProgressIndicator(progress = { task.progress }, modifier = Modifier.fillMaxWidth())
                 Text(
                     "${formatBytes(task.transferredBytes)} / ${formatBytes(task.totalBytes)} · " +
                         stringResource(DesignSystemR.string.transfer_complete_count, task.completedSources, task.sourcePaths.size),

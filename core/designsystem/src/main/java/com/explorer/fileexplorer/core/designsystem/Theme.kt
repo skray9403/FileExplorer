@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -48,6 +49,8 @@ object FolioTheme {
 @Composable
 fun FileExplorerTheme(
     themeMode: ThemeMode = ThemeMode.DYNAMIC,
+    useDynamicColor: Boolean = true,
+    accentPalette: FolioAccentPalette = FolioAccentPalette.SAGE,
     cornerStyle: String = "ROUNDED",
     content: @Composable () -> Unit,
 ) {
@@ -60,28 +63,26 @@ fun FileExplorerTheme(
         ThemeMode.DARK, ThemeMode.OLED -> true
         ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> systemDark
     }
+    val isOled = themeMode == ThemeMode.OLED
+    val applyDynamic = supportsDynamic && (useDynamicColor || themeMode == ThemeMode.DYNAMIC)
 
-    val colorScheme = when (themeMode) {
-        ThemeMode.LIGHT -> ExpressiveLightColorScheme
-        ThemeMode.DARK -> ExpressiveDarkColorScheme
-        ThemeMode.OLED -> {
-            if (supportsDynamic) {
-                dynamicDarkColorScheme(context).copy(
-                    background = OledBackground,
-                    surface = OledBackground,
-                    surfaceContainerLowest = OledBackground,
-                )
-            } else {
-                ExpressiveOledColorScheme
-            }
+    val colorScheme = if (applyDynamic) {
+        val dynamicBase = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        if (isOled) {
+            dynamicBase.copy(
+                background = OledBackground,
+                surface = OledBackground,
+                surfaceContainerLowest = OledBackground,
+                surfaceContainerLow = Color(0xFF0D0F0E),
+                surfaceContainer = Color(0xFF141716),
+                surfaceContainerHigh = Color(0xFF1D211F),
+                surfaceContainerHighest = Color(0xFF272B29),
+            )
+        } else {
+            dynamicBase
         }
-        ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> {
-            if (supportsDynamic) {
-                if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            } else {
-                if (systemDark) ExpressiveDarkColorScheme else ExpressiveLightColorScheme
-            }
-        }
+    } else {
+        resolveStaticColorScheme(palette = accentPalette, isDark = isDark, oled = isOled)
     }
 
     val extendedColors = if (isDark) DarkExtendedColors else LightExtendedColors
@@ -100,4 +101,3 @@ fun FileExplorerTheme(
         )
     }
 }
-

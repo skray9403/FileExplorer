@@ -5,8 +5,10 @@ import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +31,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -36,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.explorer.fileexplorer.core.designsystem.FileExplorerTheme
+import com.explorer.fileexplorer.core.designsystem.FolioAccentPalette
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.designsystem.ThemeMode
 import com.explorer.fileexplorer.core.storage.PermissionHelper
@@ -43,9 +47,11 @@ import com.explorer.fileexplorer.feature.security.BiometricHelper
 import com.explorer.fileexplorer.feature.security.SecurityRepository
 import com.explorer.fileexplorer.feature.security.SecuritySettings
 import com.explorer.fileexplorer.feature.settings.SettingsRepository
+import com.explorer.fileexplorer.feature.settings.SettingsState
 import com.explorer.fileexplorer.navigation.AppNavigation
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -58,23 +64,36 @@ class MainActivity : FragmentActivity() {
 
     private val hasPermissionState = mutableStateOf(false)
     private val limitedStorageState = mutableStateOf(false)
-    private val appUnlockedState = mutableStateOf(false)
+    private val appUnlockedState = mutableStateOf(true)
+    private var lockEnabledAtLastCheck = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         hasPermissionState.value = permissionHelper.hasFullStorageAccess()
 
+        val initialLockEnabled = runCatching {
+            runBlocking { securityRepository.settings.first().appLockEnabled }
+        }.getOrDefault(false)
+        lockEnabledAtLastCheck = initialLockEnabled
+        appUnlockedState.value = !initialLockEnabled
+
         setContent {
-            val themeModeFlow = remember(settingsRepository) {
-                settingsRepository.settings.map { it.themeMode }
-            }
-            val themeMode by themeModeFlow
-                .collectAsStateWithLifecycle(initialValue = ThemeMode.DYNAMIC)
+            val settings by settingsRepository.settings
+                .collectAsStateWithLifecycle(initialValue = SettingsState())
             val securitySettings by securityRepository.settings
-                .collectAsStateWithLifecycle(initialValue = SecuritySettings())
+                .collectAsStateWithLifecycle(initialValue = SecuritySettings(appLockEnabled = initialLockEnabled))
+
+            // Keep current session unlocked when user enables Biometric Lock in SecurityScreen
+            LaunchedEffect(securitySettings.appLockEnabled) {
+                if (!lockEnabledAtLastCheck && securitySettings.appLockEnabled) {
+                    appUnlockedState.value = true
+                }
+                lockEnabledAtLastCheck = securitySettings.appLockEnabled
+            }
+
             val systemDark = isSystemInDarkTheme()
-            val isDark = when (themeMode) {
+            val isDark = when (settings.themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK, ThemeMode.OLED -> true
                 ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> systemDark
@@ -102,33 +121,33 @@ class MainActivity : FragmentActivity() {
                     title = getString(DesignSystemR.string.unlock_app_title),
                     subtitle = getString(DesignSystemR.string.unlock_app_subtitle),
                     onSuccess = { appUnlockedState.value = true },
-                    onFailure = { /* retry on demand */ },
+                    onFailure = { /* retry on button tap */ },
                 )
             }
 
             LaunchedEffect(requiresAuth) {
-                if (requiresAuth) {
-                    triggerBiometric()
-                }
+                if (requiresAuth) triggerBiometric()
             }
 
-            FileExplorerTheme(themeMode = themeMode) {
+            FileExplorerTheme(
+                themeMode = settings.themeMode,
+                useDynamicColor = settings.useDynamicColor,
+                accentPalette = FolioAccentPalette.fromKey(settings.accentPalette),
+                cornerStyle = settings.cornerStyle,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    when {
-                        requiresAuth -> {
-                            LockScreen(onUnlock = triggerBiometric)
-                        }
-                        hasPermissionState.value || limitedStorageState.value -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // AppNavigation stays mounted permanently so unlocking never resets the back stack
+                        if (hasPermissionState.value || limitedStorageState.value) {
                             AppNavigation(
                                 initialPath = if (limitedStorageState.value) {
                                     permissionHelper.scopedStorageRootPath()
                                 } else null,
                             )
-                        }
-                        else -> {
+                        } else {
                             PermissionScreen(
                                 onGrantPermission = {
                                     startActivity(permissionHelper.getManageStorageIntent())
@@ -137,6 +156,10 @@ class MainActivity : FragmentActivity() {
                                     limitedStorageState.value = true
                                 },
                             )
+                        }
+
+                        if (requiresAuth) {
+                            LockScreen(onUnlock = triggerBiometric)
                         }
                     }
                 }
@@ -148,6 +171,13 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         hasPermissionState.value = permissionHelper.hasFullStorageAccess()
     }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && lockEnabledAtLastCheck) {
+            appUnlockedState.value = false
+        }
+    }
 }
 
 @Composable
@@ -155,6 +185,7 @@ private fun LockScreen(onUnlock: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

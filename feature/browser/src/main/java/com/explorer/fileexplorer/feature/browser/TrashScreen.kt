@@ -210,7 +210,7 @@ fun TrashScreen(
         }
     }
 
-    PredictiveBackHandler(enabled = true) { progress ->
+    PredictiveBackHandler(enabled = state.selectionMode) { progress ->
         try {
             progress.collect {}
             if (state.selectionMode) viewModel.clearSelection() else onNavigateBack()

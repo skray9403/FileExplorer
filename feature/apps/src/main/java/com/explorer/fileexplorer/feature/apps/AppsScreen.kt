@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -256,6 +257,7 @@ class AppsViewModel @Inject constructor(
 // -- Screen --
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppsScreen(
     viewModel: AppsViewModel = hiltViewModel(),
@@ -263,16 +265,6 @@ fun AppsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var backProgress by remember { mutableFloatStateOf(0f) }
-
-    PredictiveBackHandler(enabled = true) { progress ->
-        try {
-            progress.collect { backProgress = it.progress }
-            onNavigateBack()
-        } catch (_: CancellationException) {
-            backProgress = 0f
-        }
-    }
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
 
@@ -293,9 +285,7 @@ fun AppsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "apps_headline") {
-                FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.apps_count, state.appCount))
-            }
+
 
             item(key = "apps_filters") {
                 Row(
@@ -320,25 +310,24 @@ fun AppsScreen(
                             .padding(top = 48.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                 }
             } else {
-                item(key = "apps_list") {
-                    FolioSegmentedColumn {
-                        state.filteredApps.forEachIndexed { index, app ->
-                            FolioSegmentedCard(
-                                index = index,
-                                count = state.filteredApps.size,
-                                onClick = { viewModel.showDetails(app) },
-                            ) {
-                                AppListItem(
-                                    app = app,
-                                    onOpen = { viewModel.openApp(app.packageName) },
-                                    onDetails = { viewModel.showDetails(app) },
-                                )
-                            }
-                        }
+                itemsIndexed(
+                    items = state.filteredApps,
+                    key = { _, app -> app.packageName },
+                ) { index, app ->
+                    FolioSegmentedCard(
+                        index = index,
+                        count = state.filteredApps.size,
+                        onClick = { viewModel.showDetails(app) },
+                    ) {
+                        AppListItem(
+                            app = app,
+                            onOpen = { viewModel.openApp(app.packageName) },
+                            onDetails = { viewModel.showDetails(app) },
+                        )
                     }
                 }
             }
@@ -349,18 +338,18 @@ fun AppsScreen(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
         FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.app_manager),
+            title = stringResource(DesignSystemR.string.apps_count, state.appCount),
             onNavigateBack = onNavigateBack,
             searchQuery = state.searchQuery,
             searchHint = stringResource(DesignSystemR.string.search_apps_hint),
             onSearchQueryChange = viewModel::setSearch,
             onFabClick = null,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-
-        FolioBottomScrim(
-            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -385,24 +374,35 @@ private fun AppListItem(app: AppInfo, onOpen: () -> Unit, onDetails: () -> Unit)
     ListItem(
         headlineContent = { Text(app.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            Text(stringResource(DesignSystemR.string.app_package_size, app.packageName, formatApkSize(app.apkSize)),
-                style = MaterialTheme.typography.bodySmall, maxLines = 1,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(DesignSystemR.string.app_package_size, app.packageName, formatApkSize(app.apkSize)),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
         leadingContent = {
             app.icon?.let { drawable ->
-                Image(bitmap = drawable.toBitmap(40, 40).asImageBitmap(), contentDescription = null,
-                    modifier = Modifier.size(40.dp))
-            } ?: Icon(Icons.Filled.Android, null, modifier = Modifier.size(40.dp))
+                Image(
+                    bitmap = drawable.toBitmap(40, 40).asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                )
+            } ?: Icon(Icons.Rounded.Android, null, modifier = Modifier.size(40.dp))
         },
         trailingContent = {
             Row {
                 if (!app.isSystem) {
-                    IconButton(onClick = onOpen) { Icon(Icons.Filled.Launch, stringResource(DesignSystemR.string.open), modifier = Modifier.size(20.dp)) }
+                    IconButton(onClick = onOpen) {
+                        Icon(Icons.Rounded.Launch, stringResource(DesignSystemR.string.open), modifier = Modifier.size(20.dp))
+                    }
                 }
-                IconButton(onClick = onDetails) { Icon(Icons.Filled.Info, stringResource(DesignSystemR.string.details), modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = onDetails) {
+                    Icon(Icons.Rounded.Info, stringResource(DesignSystemR.string.details), modifier = Modifier.size(20.dp))
+                }
             }
         },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
 

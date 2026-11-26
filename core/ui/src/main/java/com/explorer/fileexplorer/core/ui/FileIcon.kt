@@ -61,7 +61,7 @@ fun FileIcon(
                     else DesignSystemR.string.file_icon_description,
                     item.extension.ifBlank { item.mimeType },
                 ),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.fillMaxSize(0.54f),
             )
         }
     }

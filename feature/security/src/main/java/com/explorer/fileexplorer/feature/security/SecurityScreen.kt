@@ -852,16 +852,6 @@ fun SecurityScreen(
         )
     }
     var showIntegrityPathDialog by remember { mutableStateOf(false) }
-    var backProgress by remember { mutableFloatStateOf(0f) }
-
-    PredictiveBackHandler(enabled = true) { progress ->
-        try {
-            progress.collect { backProgress = it.progress }
-            onNavigateBack()
-        } catch (_: CancellationException) {
-            backProgress = 0f
-        }
-    }
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
     DisposableEffect(Unit) { onDispose { viewModel.lockVault() } }
@@ -1111,14 +1101,14 @@ fun SecurityScreen(
                                         onClick = viewModel::scanIntegrityNow,
                                         enabled = state.integrityEntries.isNotEmpty() && !state.isScanningIntegrity,
                                         modifier = Modifier.weight(1f),
-                                    ) { Text(if (state.isScanningIntegrity) "Scanning..." else "Scan now") }
+                                    ) { Text(if (state.isScanningIntegrity) stringResource(DesignSystemR.string.scanning) else stringResource(DesignSystemR.string.scan_now)) }
                                 }
                             }
                         }
                         if (state.integrityEntries.isEmpty()) {
                             FolioSegmentedCard(index = 1, count = rows) {
                                 Text(
-                                    text = "No watched paths yet.",
+                                    text = stringResource(DesignSystemR.string.no_watched_paths),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(16.dp),
@@ -1164,8 +1154,8 @@ fun SecurityScreen(
                                 Text(
                                     text = when {
                                         state.isLoadingEncryptedVolumes -> "Checking root environment..."
-                                        state.encryptedFormats.isEmpty() -> "Root access and gocryptfs or EncFS with FUSE support are required."
-                                        else -> "No encrypted volumes mounted."
+                                        state.encryptedFormats.isEmpty() -> stringResource(DesignSystemR.string.encrypted_volumes_requirements)
+                                        else -> stringResource(DesignSystemR.string.no_encrypted_volumes_mounted)
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
