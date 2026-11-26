@@ -7,6 +7,7 @@ import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.background
 
 import androidx.compose.foundation.layout.Arrangement
