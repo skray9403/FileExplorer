@@ -2,6 +2,7 @@ package com.explorer.fileexplorer
 
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -66,6 +67,7 @@ class MainActivity : FragmentActivity() {
     private val limitedStorageState = mutableStateOf(false)
     private val appUnlockedState = mutableStateOf(true)
     private var lockEnabledAtLastCheck = false
+    private var backgroundedAtMillis: Long? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -170,12 +172,23 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         hasPermissionState.value = permissionHelper.hasFullStorageAccess()
+        val stoppedAt = backgroundedAtMillis
+        backgroundedAtMillis = null
+        if (stoppedAt != null) {
+            val security = runCatching { runBlocking { securityRepository.settings.first() } }.getOrNull()
+            if (security?.appLockEnabled == true) {
+                val elapsed = (SystemClock.elapsedRealtime() - stoppedAt).coerceAtLeast(0L)
+                if (elapsed >= security.appLockTimeoutSeconds * 1_000L) {
+                    appUnlockedState.value = false
+                }
+            }
+        }
     }
 
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations && lockEnabledAtLastCheck) {
-            appUnlockedState.value = false
+            backgroundedAtMillis = SystemClock.elapsedRealtime()
         }
     }
 }

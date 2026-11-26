@@ -433,7 +433,12 @@ fun BrowserScreen(
                 SortField.TYPE -> DesignSystemR.string.sort_type
             }
             FolioFabMenuAction(
-                icon = if (state.sortOrder.direction == SortDirection.ASCENDING) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                icon = when (field) {
+                    SortField.NAME -> Icons.AutoMirrored.Rounded.Sort
+                    SortField.SIZE -> Icons.Rounded.Storage
+                    SortField.DATE -> Icons.Rounded.History
+                    SortField.TYPE -> Icons.Rounded.Folder
+                },
                 labelRes = labelRes,
                 selected = isSelected,
                 trailingIcon = directionIcon,
@@ -1027,6 +1032,15 @@ fun BrowserScreen(
                     volumes = state.volumes,
                     showAddButton = false,
                     floating = true,
+                    onOpenInSplit = viewModel::openInSplitTab,
+                    onCopyTabPath = { path ->
+                        clipboardManager.setText(AnnotatedString(path))
+                        Toast.makeText(
+                            context,
+                            context.applicationContext.getString(DesignSystemR.string.path_copied),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
             }

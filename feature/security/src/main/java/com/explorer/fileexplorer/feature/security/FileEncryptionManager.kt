@@ -18,6 +18,10 @@ import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import java.nio.file.StandardOpenOption
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
@@ -318,31 +322,51 @@ class FileEncryptionManager @Inject constructor(
 
     private suspend fun encryptFile(path: String, invalidateOnChange: Boolean): Result<String> = runCatching {
         val source = File(path).canonicalFile
-        require(Files.isRegularFile(source.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            "Only regular local files can be encrypted"
-        }
+        val sourcePath = source.toPath()
+        val isDirectory = Files.isDirectory(sourcePath, LinkOption.NOFOLLOW_LINKS)
+        val isRegularFile = Files.isRegularFile(sourcePath, LinkOption.NOFOLLOW_LINKS)
+        require(isDirectory || isRegularFile) { "Only regular files and folders can be encrypted" }
+        require(!Files.isSymbolicLink(sourcePath)) { "Symbolic links cannot be encrypted" }
         require(!source.name.endsWith(ENCRYPTED_SUFFIX)) { "File is already encrypted" }
         val parent = source.parentFile ?: error("File has no parent folder")
-        val destination = File(parent, source.name + ENCRYPTED_SUFFIX)
+        val headerName = source.name + if (isDirectory) ENCRYPTED_FOLDER_MARKER else ""
+        val destination = File(parent, headerName + ENCRYPTED_SUFFIX)
         require(!Files.exists(destination.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             "Encrypted destination already exists"
         }
-        val temporary = File(parent, ".fileexplorer-encrypt-" + UUID.randomUUID() + ".tmp")
+
+        val token = UUID.randomUUID().toString()
+        val temporary = File(parent, ".fileexplorer-encrypt-$token.tmp")
+        val tempZip = if (isDirectory) File(parent, ".fileexplorer-encrypt-$token.zip") else null
+        var committed = false
         try {
             val kek = getOrCreateStrongBoxKek(invalidateOnChange)
-            Files.newOutputStream(temporary.toPath(), java.nio.file.StandardOpenOption.CREATE_NEW).use { output ->
-                source.inputStream().buffered().use { input ->
-                    FileEncryptionEngine.encryptEnvelope(input, output, source.name, kek)
+            val payloadFile = if (isDirectory) {
+                packDirectoryToZip(source, tempZip!!)
+                tempZip
+            } else {
+                source
+            }
+            Files.newOutputStream(temporary.toPath(), StandardOpenOption.CREATE_NEW).use { output ->
+                payloadFile.inputStream().buffered().use { input ->
+                    FileEncryptionEngine.encryptEnvelope(input, output, headerName, kek)
                 }
             }
             moveIntoPlace(temporary, destination)
-            destination.setLastModified(source.lastModified())
-            require(Files.deleteIfExists(source.toPath())) { "Unable to remove plaintext file" }
+            committed = true
+            runCatching { destination.setLastModified(source.lastModified()) }
+            val removedSource = if (isDirectory) source.deleteRecursively()
+                else Files.deleteIfExists(sourcePath)
+            if (!removedSource) {
+                throw IOException("Encrypted copy saved to ${destination.name}, but original could not be completely removed")
+            }
             destination.absolutePath
         } catch (error: Exception) {
             runCatching { Files.deleteIfExists(temporary.toPath()) }
-            runCatching { Files.deleteIfExists(destination.toPath()) }
+            if (!committed) runCatching { Files.deleteIfExists(destination.toPath()) }
             throw error
+        } finally {
+            tempZip?.let { runCatching { Files.deleteIfExists(it.toPath()) } }
         }
     }
 
@@ -350,17 +374,25 @@ class FileEncryptionManager @Inject constructor(
         val source = File(path).canonicalFile
         require(source.name.endsWith(ENCRYPTED_SUFFIX)) { "Select a .encrypted file" }
         require(Files.isRegularFile(source.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            "Only regular local files can be decrypted"
+            "Only encrypted files can be decrypted"
         }
         val parent = source.parentFile ?: error("File has no parent folder")
         val header = source.inputStream().buffered().use { input -> FileEncryptionEngine.readHeader(input) }
-        val destination = File(parent, header.originalName)
+        require(isSafeFileName(header.originalName)) { "Encrypted file contains an invalid original name" }
+        val isDirectory = header.originalName.endsWith(ENCRYPTED_FOLDER_MARKER)
+        val outputName = if (isDirectory) header.originalName.removeSuffix(ENCRYPTED_FOLDER_MARKER) else header.originalName
+        require(isSafeFileName(outputName)) { "Encrypted file contains an invalid folder name" }
+        val destination = File(parent, outputName)
         require(!Files.exists(destination.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             "Decrypted destination already exists"
         }
-        val temporary = File(parent, ".fileexplorer-decrypt-" + UUID.randomUUID() + ".tmp")
+
+        val token = UUID.randomUUID().toString()
+        val temporary = File(parent, ".fileexplorer-decrypt-$token.tmp")
+        val stagedDir = if (isDirectory) File(parent, ".fileexplorer-decrypt-$token.stage") else null
+        var committed = false
         try {
-            Files.newOutputStream(temporary.toPath(), java.nio.file.StandardOpenOption.CREATE_NEW).use { output ->
+            Files.newOutputStream(temporary.toPath(), StandardOpenOption.CREATE_NEW).use { output ->
                 source.inputStream().buffered().use { input ->
                     FileEncryptionEngine.decryptAuto(
                         input = input,
@@ -370,17 +402,103 @@ class FileEncryptionManager @Inject constructor(
                     )
                 }
             }
-            moveIntoPlace(temporary, destination)
-            destination.setLastModified(source.lastModified())
-            require(Files.deleteIfExists(source.toPath())) { "Unable to remove encrypted file" }
+
+            if (isDirectory) {
+                Files.createDirectory(stagedDir!!.toPath())
+                extractZipToDirectory(temporary, stagedDir)
+                moveIntoPlace(stagedDir, destination)
+            } else {
+                moveIntoPlace(temporary, destination)
+            }
+            committed = true
+            runCatching { destination.setLastModified(source.lastModified()) }
+            if (!Files.deleteIfExists(source.toPath())) {
+                throw IOException("Decrypted copy saved to ${destination.name}, but encrypted source could not be removed")
+            }
             destination.absolutePath
         } catch (error: Exception) {
             runCatching { Files.deleteIfExists(temporary.toPath()) }
-            runCatching { Files.deleteIfExists(destination.toPath()) }
+            if (!committed) {
+                runCatching { stagedDir?.deleteRecursively() }
+                runCatching { Files.deleteIfExists(destination.toPath()) }
+            }
             throw error
         }
     }
 
+    private fun packDirectoryToZip(source: File, zipFile: File) {
+        val root = source.toPath().toRealPath(LinkOption.NOFOLLOW_LINKS)
+        ZipOutputStream(Files.newOutputStream(zipFile.toPath(), StandardOpenOption.CREATE_NEW)).use { zip ->
+            Files.walkFileTree(root, object : java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                override fun preVisitDirectory(
+                    dir: java.nio.file.Path,
+                    attrs: java.nio.file.attribute.BasicFileAttributes,
+                ): java.nio.file.FileVisitResult {
+                    require(!Files.isSymbolicLink(dir)) { "Folder contains a symbolic link: ${root.relativize(dir)}" }
+                    if (dir != root) {
+                        val name = root.relativize(dir).toString().replace(File.separatorChar, '/') + "/"
+                        zip.putNextEntry(ZipEntry(name))
+                        zip.closeEntry()
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(
+                    file: java.nio.file.Path,
+                    attrs: java.nio.file.attribute.BasicFileAttributes,
+                ): java.nio.file.FileVisitResult {
+                    require(!Files.isSymbolicLink(file) && attrs.isRegularFile) {
+                        "Folder contains an unsupported file: ${root.relativize(file)}"
+                    }
+                    val name = root.relativize(file).toString().replace(File.separatorChar, '/')
+                    zip.putNextEntry(ZipEntry(name))
+                    Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zip) }
+                    zip.closeEntry()
+                    return java.nio.file.FileVisitResult.CONTINUE
+                }
+            })
+        }
+    }
+
+    private fun extractZipToDirectory(zipFile: File, destination: File) {
+        val root = destination.toPath().toAbsolutePath().normalize()
+        val seen = mutableSetOf<String>()
+        ZipInputStream(Files.newInputStream(zipFile.toPath())).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val name = entry.name
+                require(name.isNotBlank() && !name.startsWith('/') && !name.startsWith('\\')) {
+                    "Archive contains an absolute or empty path"
+                }
+                require(!name.contains('\\') && !name.contains('\u0000')) {
+                    "Archive contains an invalid path"
+                }
+                val segments = name.removeSuffix("/").split('/')
+                require(segments.none { it.isBlank() || it == "." || it == ".." }) {
+                    "Archive contains a path traversal entry"
+                }
+                require(seen.add(name)) { "Archive contains duplicate entries" }
+                val target = root.resolve(name).normalize()
+                require(target.startsWith(root) && target != root) {
+                    "Archive entry escapes the destination folder"
+                }
+                if (entry.isDirectory) {
+                    Files.createDirectories(target)
+                } else {
+                    Files.createDirectories(target.parent)
+                    Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { output ->
+                        zip.copyTo(output)
+                    }
+                }
+                zip.closeEntry()
+            }
+        }
+    }
+
+    private fun isSafeFileName(name: String): Boolean =
+        name.isNotBlank() && name != "." && name != ".." &&
+            !name.contains('/') && !name.contains('\\') && !name.contains('\u0000') &&
+            File(name).name == name
     private fun moveIntoPlace(source: File, destination: File) {
         try {
             Files.move(source.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE)
@@ -407,6 +525,7 @@ class FileEncryptionManager @Inject constructor(
 
     companion object {
         const val ENCRYPTED_SUFFIX = ".encrypted"
+        internal const val ENCRYPTED_FOLDER_MARKER = ".foliofolder"
         internal const val KEYSTORE_ALIAS_V1 = "file_explorer_file_encryption_v1"
         internal const val KEYSTORE_ALIAS_V2_STRONGBOX = "file_explorer_file_encryption_v2_sb"
     }

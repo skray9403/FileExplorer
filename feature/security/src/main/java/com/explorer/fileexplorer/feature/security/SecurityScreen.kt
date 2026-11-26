@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.fragment.app.FragmentActivity
@@ -133,6 +134,7 @@ class SecurityRepository @Inject constructor(
 ) {
     private object Keys {
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
+        val APP_LOCK_TIMEOUT_SECONDS = intPreferencesKey("app_lock_timeout_seconds")
         val VAULT_ENABLED = booleanPreferencesKey("vault_enabled")
         val SECURE_DELETE_ENABLED = booleanPreferencesKey("secure_delete_enabled")
         val INVALIDATE_ON_BIOMETRIC_CHANGE = booleanPreferencesKey("invalidate_on_biometric_change")
@@ -141,6 +143,7 @@ class SecurityRepository @Inject constructor(
     val settings: Flow<SecuritySettings> = context.securityDataStore.data.map { prefs ->
         SecuritySettings(
             appLockEnabled = prefs[Keys.APP_LOCK_ENABLED] ?: false,
+            appLockTimeoutSeconds = prefs[Keys.APP_LOCK_TIMEOUT_SECONDS] ?: 0,
             vaultEnabled = prefs[Keys.VAULT_ENABLED] ?: false,
             secureDeleteEnabled = prefs[Keys.SECURE_DELETE_ENABLED] ?: false,
             invalidateKeysOnBiometricChange = prefs[Keys.INVALIDATE_ON_BIOMETRIC_CHANGE] ?: false,
@@ -149,6 +152,11 @@ class SecurityRepository @Inject constructor(
 
     suspend fun setAppLock(enabled: Boolean) {
         context.securityDataStore.edit { it[Keys.APP_LOCK_ENABLED] = enabled }
+    }
+
+    suspend fun setAppLockTimeout(seconds: Int) {
+        require(seconds in setOf(0, 30, 60, 300, 900))
+        context.securityDataStore.edit { it[Keys.APP_LOCK_TIMEOUT_SECONDS] = seconds }
     }
 
     suspend fun setVaultEnabled(enabled: Boolean) {
@@ -172,6 +180,7 @@ class SecurityRepository @Inject constructor(
 
 data class SecuritySettings(
     val appLockEnabled: Boolean = false,
+    val appLockTimeoutSeconds: Int = 0,
     val vaultEnabled: Boolean = false,
     val secureDeleteEnabled: Boolean = false,
     val invalidateKeysOnBiometricChange: Boolean = false,
@@ -602,6 +611,9 @@ class SecurityViewModel @Inject constructor(
     }
 
     fun toggleAppLock() { viewModelScope.launch { securityRepo.setAppLock(!_state.value.settings.appLockEnabled) } }
+    fun setAppLockTimeout(seconds: Int) {
+        viewModelScope.launch { securityRepo.setAppLockTimeout(seconds) }
+    }
     fun toggleInvalidateOnBiometricChange() {
         viewModelScope.launch {
             securityRepo.setInvalidateOnBiometricChange(!_state.value.settings.invalidateKeysOnBiometricChange)
@@ -943,6 +955,66 @@ fun SecurityScreen(
                                 enabled = state.canUseBiometrics,
                                 onCheckedChange = { viewModel.toggleInvalidateOnBiometricChange() },
                             )
+                        }
+                    }
+                }
+            }
+
+            item(key = "sec_app_lock_timeout") {
+                var timeoutExpanded by remember { mutableStateOf(false) }
+                val seconds = state.settings.appLockTimeoutSeconds
+                val label = when (seconds) {
+                    0 -> "Immediately"
+                    30 -> "After 30 seconds"
+                    60 -> "After 1 minute"
+                    300 -> "After 5 minutes"
+                    900 -> "After 15 minutes"
+                    else -> "Immediately"
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FolioSectionLabel("Lock after leaving the app")
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            onClick = { timeoutExpanded = true },
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("App lock timeout", style = MaterialTheme.typography.titleSmall)
+                                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Filled.ExpandMore, contentDescription = null)
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = timeoutExpanded,
+                            onDismissRequest = { timeoutExpanded = false },
+                        ) {
+                            listOf(0, 30, 60, 300, 900).forEach { option ->
+                                val optionLabel = when (option) {
+                                    0 -> "Immediately"
+                                    30 -> "30 seconds"
+                                    60 -> "1 minute"
+                                    300 -> "5 minutes"
+                                    else -> "15 minutes"
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(optionLabel) },
+                                    onClick = {
+                                        viewModel.setAppLockTimeout(option)
+                                        timeoutExpanded = false
+                                    },
+                                    trailingIcon = {
+                                        if (seconds == option) Icon(Icons.Filled.Check, contentDescription = null)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
