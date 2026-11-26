@@ -700,10 +700,10 @@ fun FolioMorphingBottomBar(
                             // SLOT 1: Content-Hugging Primary Pill
                             Surface(
                                 shape = CircleShape,
-                                color = colorScheme.surfaceContainerHigh,
+                                color = if (leftKind == LeftPillKind.SUBFOLDER_NAV) Color.Transparent else colorScheme.surfaceContainerHigh,
                                 contentColor = colorScheme.onSurface,
-                                shadowElevation = 6.dp,
-                                border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                shadowElevation = if (leftKind == LeftPillKind.SUBFOLDER_NAV) 0.dp else 6.dp,
+                                border = if (leftKind == LeftPillKind.SUBFOLDER_NAV) null else BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .height(dockPillHeight)
@@ -716,13 +716,11 @@ fun FolioMorphingBottomBar(
                                 ) { kind ->
                                     when (kind) {
                                         LeftPillKind.SUBFOLDER_NAV -> {
-                                            // Disciplined outer pill with 3 distinct inner circular tonal containers [←] [🔍] [🏠]
+                                            // Gallery-style folder dock: independent Back bubble + folder-title/search bubble.
                                             Row(
-                                                modifier = Modifier
-                                                    .height(dockPillHeight)
-                                                    .padding(horizontal = 7.dp),
+                                                modifier = Modifier.height(dockPillHeight),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             ) {
                                                 FolioInnerCircleButton(
                                                     icon = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -730,18 +728,35 @@ fun FolioMorphingBottomBar(
                                                     onClick = controller.onNavigateUp,
                                                     onLongClick = controller.onNavigateToRoot,
                                                 )
-                                                if (hasSearch) {
-                                                    FolioInnerCircleButton(
-                                                        icon = Icons.Rounded.Search,
-                                                        contentDescription = stringResource(R.string.search),
-                                                        onClick = triggerSearch,
-                                                    )
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = colorScheme.surfaceContainerHigh,
+                                                    contentColor = colorScheme.onSurface,
+                                                    shadowElevation = 6.dp,
+                                                    border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                                    modifier = Modifier.height(44.dp).widthIn(min = 132.dp, max = 232.dp),
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 5.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                    ) {
+                                                        Text(
+                                                            text = controller.folderTitle.ifBlank { stringResource(R.string.folder) },
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f),
+                                                        )
+                                                        if (hasSearch) {
+                                                            FolioIconPillButton(
+                                                                icon = Icons.Rounded.Search,
+                                                                contentDescription = stringResource(R.string.search),
+                                                                onClick = triggerSearch,
+                                                            )
+                                                        }
+                                                    }
                                                 }
-                                                FolioInnerCircleButton(
-                                                    icon = Icons.Rounded.Home,
-                                                    contentDescription = stringResource(R.string.home),
-                                                    onClick = controller.onNavigateToRoot,
-                                                )
                                             }
                                         }
 

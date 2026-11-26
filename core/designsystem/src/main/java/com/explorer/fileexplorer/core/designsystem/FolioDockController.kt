@@ -52,6 +52,7 @@ class FolioDockController {
     var sortSecondaryItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
 
     var isSubfolder by mutableStateOf(false)
+    var folderTitle by mutableStateOf("")
     var onNavigateUp by mutableStateOf<() -> Unit>({})
     var onNavigateToRoot by mutableStateOf<() -> Unit>({})
 
@@ -102,6 +103,7 @@ class FolioDockController {
         canCreatePrimaryAction = true
         onPrimaryAction = {}
         isSubfolder = false
+        folderTitle = ""
         onNavigateUp = {}
         onNavigateToRoot = {}
         inlineSearchActive = false

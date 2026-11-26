@@ -663,6 +663,7 @@ fun BrowserScreen(
             }
         }
     }
+    LaunchedEffect(activeFolderTitle) { dockController.folderTitle = activeFolderTitle }
 
     val overscrollThresholdPx = with(density) { 88.dp.toPx() }
 
