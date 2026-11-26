@@ -483,7 +483,7 @@ private fun CloudBrowserScreen(
                     TextButton(onClick = onNavigateUp) {
                         Icon(Icons.Filled.ArrowUpward, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Parent folder")
+                        Text(stringResource(DesignSystemR.string.parent_folder))
                     }
                 }
             }

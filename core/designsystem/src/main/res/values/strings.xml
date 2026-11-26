@@ -586,4 +586,6 @@
     <string name="checking_root_env">Checking root environment…</string>
     <string name="encrypted_volumes_requirements">Root access and gocryptfs or EncFS with FUSE support are required.</string>
     <string name="no_encrypted_volumes_mounted">No encrypted volumes mounted.</string>
+    <string name="app_lock_timeout_title">App lock timeout</string>
+    <string name="parent_folder">Parent folder</string>
 </resources>

@@ -986,7 +986,7 @@ fun SecurityScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("App lock timeout", style = MaterialTheme.typography.titleSmall)
+                                    Text(stringResource(DesignSystemR.string.app_lock_timeout_title), style = MaterialTheme.typography.titleSmall)
                                     Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Icon(Icons.Filled.ExpandMore, contentDescription = null)
