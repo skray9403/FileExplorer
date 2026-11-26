@@ -258,6 +258,15 @@ fun FolioMorphingBottomBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .graphicsLayer {
+                    val back = controller.predictiveBackProgress.coerceIn(0f, 1f)
+                    val collapse = maxOf(back, if (controller.isDockMinimizedByScroll) 0.72f else 0f)
+                    scaleX = 1f - collapse * 0.075f
+                    scaleY = 1f - collapse * 0.10f
+                    translationY = collapse * 18.dp.toPx()
+                    translationX = controller.predictiveBackEdgeSign * back * 28.dp.toPx()
+                    alpha = 1f - back * 0.12f
+                }
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
