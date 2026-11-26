@@ -181,6 +181,7 @@ fun FolioMorphingBottomBar(
 
     val hasFab = enabledFabActions.isNotEmpty()
     val hasSort = enabledSortPrimary.isNotEmpty()
+    val hasSearch = controller.onInlineSearchOpen != null
     val hasTasks = controller.taskBadgeCount > 0 && !controller.selectionMode && !controller.inlineSearchActive
     val compactTabs = hasTasks
 
@@ -771,7 +772,7 @@ fun FolioMorphingBottomBar(
                                                         },
                                                     )
                                                 }
-                                                if (controller.onInlineSearchOpen != null) {
+                                                if (hasSearch) {
                                                     FolioIconPillButton(
                                                         icon = Icons.Rounded.Search,
                                                         contentDescription = stringResource(R.string.search),
