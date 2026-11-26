@@ -14,7 +14,7 @@ import java.time.Duration
 import javax.xml.parsers.DocumentBuilderFactory
 
 private val MIN_COMPILE_SDK = 37
-private val MIN_TARGET_SDK = 35
+private val MIN_TARGET_SDK = 37
 private val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
 private data class ResolvedDependency(

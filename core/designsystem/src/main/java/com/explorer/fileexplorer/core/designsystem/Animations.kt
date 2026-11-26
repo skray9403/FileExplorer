@@ -16,31 +16,17 @@ val M3StandardEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
  * Centralized motion tokens from Monomail foundation for consistent physics across Folio.
  */
 object MonoSpring {
-    // For press feedback, FAB clicks, and bouncy indicators
-    fun <T> bouncy() = spring<T>(
-        dampingRatio = 0.65f,
-        stiffness = 800f,
-    )
+    fun <T> micro() = spring<T>(dampingRatio = 0.82f, stiffness = 900f)
+    fun <T> spatial() = spring<T>(dampingRatio = 0.76f, stiffness = 420f)
+    fun <T> expressive() = spring<T>(dampingRatio = 0.64f, stiffness = 320f)
+    fun <T> dismiss() = spring<T>(dampingRatio = 0.88f, stiffness = 650f)
 
-    // For layout shifts, expanding areas, and bottom bar morphs
-    fun <T> gentle() = spring<T>(
-        dampingRatio = 0.8f,
-        stiffness = 400f,
-    )
+    // Backwards-compatible aliases for existing call sites.
+    fun <T> bouncy() = micro()
+    fun <T> gentle() = spatial()
+    fun <T> snappy() = expressive()
+    fun <T> expressiveSpatial() = expressive()
 
-    // For quick toggles, chips, selection states
-    fun <T> snappy() = spring<T>(
-        dampingRatio = 0.75f,
-        stiffness = 1200f,
-    )
-
-    // Spatial spring for cross-screen container transforms (M3 Expressive)
-    fun <T> expressiveSpatial() = spring<T>(
-        dampingRatio = 0.85f,
-        stiffness = 500f,
-    )
-
-    // Strict no-bounce spring for color and alpha transitions
     fun <T> noBounceColor() = spring<T>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = 1400f,

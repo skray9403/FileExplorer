@@ -964,15 +964,15 @@ fun SecurityScreen(
                 var timeoutExpanded by remember { mutableStateOf(false) }
                 val seconds = state.settings.appLockTimeoutSeconds
                 val label = when (seconds) {
-                    0 -> "Immediately"
-                    30 -> "After 30 seconds"
-                    60 -> "After 1 minute"
-                    300 -> "After 5 minutes"
-                    900 -> "After 15 minutes"
-                    else -> "Immediately"
+                    0 -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
+                    30 -> stringResource(DesignSystemR.string.app_lock_timeout_30_seconds)
+                    60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
+                    300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
+                    900 -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                    else -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FolioSectionLabel("Lock after leaving the app")
+                    FolioSectionLabel(stringResource(DesignSystemR.string.lock_after_leaving_app))
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             onClick = { timeoutExpanded = true },
@@ -998,11 +998,11 @@ fun SecurityScreen(
                         ) {
                             listOf(0, 30, 60, 300, 900).forEach { option ->
                                 val optionLabel = when (option) {
-                                    0 -> "Immediately"
-                                    30 -> "30 seconds"
-                                    60 -> "1 minute"
-                                    300 -> "5 minutes"
-                                    else -> "15 minutes"
+                                    0 -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
+                                    30 -> stringResource(DesignSystemR.string.app_lock_timeout_30_seconds)
+                                    60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
+                                    300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
+                                    else -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
                                 }
                                 DropdownMenuItem(
                                     text = { Text(optionLabel) },

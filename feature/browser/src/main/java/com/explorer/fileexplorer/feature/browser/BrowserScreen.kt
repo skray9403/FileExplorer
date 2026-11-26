@@ -18,11 +18,14 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -179,6 +182,7 @@ import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioSelectionDockActions
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
+import com.explorer.fileexplorer.core.designsystem.rememberScrollDistanceConnection
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.model.FileColumn
 import com.explorer.fileexplorer.core.model.FileItem
@@ -196,6 +200,8 @@ import com.explorer.fileexplorer.feature.security.SecurityEntryPoint
 import com.explorer.fileexplorer.feature.settings.SwipeAction
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -242,11 +248,17 @@ fun BrowserScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showTabsSheet by remember { mutableStateOf(false) }
     var breadcrumbExpanded by remember { mutableStateOf(false) }
-    var backPreviewProgress by remember { mutableFloatStateOf(0f) }
+    val backPreviewProgress = remember { Animatable(0f) }
+    var backPreviewDirection by remember { mutableFloatStateOf(1f) }
+    val scrollDistanceConnection = rememberScrollDistanceConnection(
+        thresholdDp = 24f,
+        onScrollDown = { dockController.onFastScrollDown() },
+        onScrollUp = { dockController.onFastScrollUp() },
+    )
 
     LaunchedEffect(state.currentPath, state.inlineSearchActive, state.selectionMode) {
         breadcrumbExpanded = false
-        backPreviewProgress = 0f
+        backPreviewProgress.snapTo(0f)
     }
 
     val clipboardManager = LocalClipboardManager.current
@@ -612,7 +624,10 @@ fun BrowserScreen(
         val isFolderBack = !breadcrumbExpanded && !state.inlineSearchActive && !state.selectionMode
         try {
             progress.collect { event ->
-                if (isFolderBack) backPreviewProgress = event.progress
+                if (isFolderBack) {
+                    backPreviewDirection = if (event.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+                    backPreviewProgress.snapTo(event.progress)
+                }
             }
             when {
                 breadcrumbExpanded -> breadcrumbExpanded = false
@@ -621,7 +636,12 @@ fun BrowserScreen(
                 else -> viewModel.navigateUp()
             }
         } catch (_: CancellationException) {
-            backPreviewProgress = 0f
+            withContext(NonCancellable) {
+                backPreviewProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = 650f),
+                )
+            }
         }
     }
 
@@ -653,13 +673,14 @@ fun BrowserScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(scrollDistanceConnection)
                 .graphicsLayer {
-                    val p = backPreviewProgress.coerceIn(0f, 1f)
-                    val scale = 1f - (0.055f * p)
+                    val p = backPreviewProgress.value.coerceIn(0f, 1f)
+                    val scale = 1f - (0.12f * p)
                     scaleX = scale
                     scaleY = scale
-                    translationX = 32.dp.toPx() * p
-                    shape = RoundedCornerShape(24.dp * p)
+                    translationX = backPreviewDirection * 32.dp.toPx() * p
+                    shape = RoundedCornerShape(28.dp * p)
                     clip = p > 0f
                 },
         ) {

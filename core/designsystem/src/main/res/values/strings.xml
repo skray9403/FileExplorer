@@ -591,4 +591,10 @@
     <string name="copy_path">Copy path</string>
     <string name="close_this_tab">Close tab</string>
     <string name="tab_actions">Tab options</string>
+    <string name="lock_after_leaving_app">Lock after leaving the app</string>
+    <string name="app_lock_timeout_immediately">Immediately</string>
+    <string name="app_lock_timeout_30_seconds">30 seconds</string>
+    <string name="app_lock_timeout_1_minute">1 minute</string>
+    <string name="app_lock_timeout_5_minutes">5 minutes</string>
+    <string name="app_lock_timeout_15_minutes">15 minutes</string>
 </resources>

@@ -83,6 +83,55 @@ class ScrollVelocityConnection(
     }
 }
 
+class ScrollDistanceConnection(
+    private val density: Float,
+    private val thresholdDp: Float = 24f,
+    private val onScrollDown: () -> Unit,
+    private val onScrollUp: () -> Unit,
+) : NestedScrollConnection {
+    private var direction = 0
+    private var accumulatedDp = 0f
+    private var triggeredForDirection = false
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput || available.y == 0f) return Offset.Zero
+        // Negative nested-scroll Y means the list is moving down (finger moves upward).
+        val nextDirection = if (available.y < 0f) -1 else 1
+        if (nextDirection != direction) {
+            direction = nextDirection
+            accumulatedDp = 0f
+            triggeredForDirection = false
+        }
+        if (!triggeredForDirection) {
+            accumulatedDp += kotlin.math.abs(available.y) / density
+            if (accumulatedDp >= thresholdDp) {
+                triggeredForDirection = true
+                if (direction < 0) onScrollDown() else onScrollUp()
+            }
+        }
+        return Offset.Zero
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        accumulatedDp = 0f
+        direction = 0
+        triggeredForDirection = false
+        return Velocity.Zero
+    }
+}
+
+@Composable
+fun rememberScrollDistanceConnection(
+    thresholdDp: Float = 24f,
+    onScrollDown: () -> Unit,
+    onScrollUp: () -> Unit,
+): ScrollDistanceConnection {
+    val density = LocalDensity.current.density
+    return remember(density, thresholdDp, onScrollDown, onScrollUp) {
+        ScrollDistanceConnection(density, thresholdDp, onScrollDown, onScrollUp)
+    }
+}
+
 @Composable
 fun rememberScrollVelocityConnection(
     velocityThresholdDpPerSec: Float = 600f,

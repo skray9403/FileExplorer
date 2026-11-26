@@ -8,7 +8,6 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -104,8 +103,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-private val PillHeight = 56.dp
+private val PillHeight = 64.dp
+private val CompactPillHeight = 56.dp
 private val FabWidth = 56.dp
+private val ExtendedFabWidth = 120.dp
 private val TaskPillWidth = 74.dp
 private val InterPillGap = 8.dp
 
@@ -183,7 +184,6 @@ fun FolioMorphingBottomBar(
     val hasSort = enabledSortPrimary.isNotEmpty()
     val hasSearch = controller.onInlineSearchOpen != null
     val hasTasks = controller.taskBadgeCount > 0 && !controller.selectionMode && !controller.inlineSearchActive
-    val compactTabs = hasTasks
 
     val leftKind = when {
         controller.inlineSearchActive -> LeftPillKind.INLINE_SEARCH
@@ -207,10 +207,15 @@ fun FolioMorphingBottomBar(
         controller.onInlineSearchOpen?.invoke() ?: onSearchClick()
     }
 
-    val spatialDpSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec<Dp>()
-    val fastSpatialSpec = if (reducedMotion) tween(60) else motionScheme.fastSpatialSpec<Float>()
+    val spatialDpSpec = if (reducedMotion) tween(70) else MonoSpring.spatial<Dp>()
+    val fastSpatialSpec = if (reducedMotion) tween(60) else MonoSpring.micro<Float>()
     val effectsColorSpec = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Color>()
     val effectsFloatSpec = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Float>()
+    val dockPillHeight by animateDpAsState(
+        targetValue = if (controller.isDockMinimizedByScroll) CompactPillHeight else PillHeight,
+        animationSpec = spatialDpSpec,
+        label = "dockPillHeight",
+    )
 
     val rightContainerTarget = when {
         controller.selectionMode -> colorScheme.surfaceContainerHigh
@@ -376,7 +381,7 @@ fun FolioMorphingBottomBar(
                 val rightTargetW = when {
                     controller.inlineSearchActive -> 0.dp
                     controller.selectionMode -> ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp)
-                    hasFab -> FabWidth
+                    hasFab -> if (controller.isDockMinimizedByScroll) FabWidth else ExtendedFabWidth
                     else -> 0.dp
                 }
 
@@ -407,7 +412,7 @@ fun FolioMorphingBottomBar(
                             border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                             modifier = Modifier
                                 .width(selLeftW)
-                                .height(PillHeight)
+                                .height(dockPillHeight)
                                 .clip(CircleShape),
                         ) {
                             AnimatedContent(
@@ -605,7 +610,7 @@ fun FolioMorphingBottomBar(
                                 border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                                 modifier = Modifier
                                     .width(rightWidth)
-                                    .height(PillHeight)
+                                    .height(dockPillHeight)
                                     .clip(CircleShape),
                             ) {
                                 val actions = controller.selectionActions
@@ -704,7 +709,7 @@ fun FolioMorphingBottomBar(
                                     .animateContentSize(
                                         animationSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec(),
                                     )
-                                    .height(PillHeight)
+                                    .height(dockPillHeight)
                                     .clip(CircleShape),
                             ) {
                                 AnimatedContent(
@@ -717,7 +722,7 @@ fun FolioMorphingBottomBar(
                                             // Disciplined outer pill with 3 distinct inner circular tonal containers [←] [🔍] [🏠]
                                             Row(
                                                 modifier = Modifier
-                                                    .height(PillHeight)
+                                                    .height(dockPillHeight)
                                                     .padding(horizontal = 7.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -747,7 +752,7 @@ fun FolioMorphingBottomBar(
                                             // Root Dock: [Browse | Collections | ⇅ Sort | 🔍 Search]
                                             Row(
                                                 modifier = Modifier
-                                                    .height(PillHeight)
+                                                    .height(dockPillHeight)
                                                     .padding(horizontal = 6.dp, vertical = 5.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -756,7 +761,7 @@ fun FolioMorphingBottomBar(
                                                     FolioMorphTabChip(
                                                         destination = dest,
                                                         isSelected = selectedDestination == dest.id,
-                                                        iconOnly = compactTabs,
+                                                        iconOnly = selectedDestination != dest.id,
                                                         reducedMotion = reducedMotion,
                                                         onClick = { onDestinationSelected(dest.id) },
                                                     )
@@ -806,7 +811,7 @@ fun FolioMorphingBottomBar(
                                     border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
                                     modifier = Modifier
                                         .width(middleWidth)
-                                        .height(PillHeight)
+                                        .height(dockPillHeight)
                                         .graphicsLayer { alpha = middleAlpha }
                                         .clip(CircleShape),
                                 ) {
@@ -875,7 +880,8 @@ fun FolioMorphingBottomBar(
                                 shadowElevation = 6.dp,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .size(FabWidth)
+                                    .width(if (controller.selectionMode) FabWidth else rightWidth)
+                                    .height(FabWidth)
                                     .graphicsLayer {
                                         alpha = rightAlpha
                                         scaleX = pressScale
@@ -895,7 +901,11 @@ fun FolioMorphingBottomBar(
                                         },
                                     ),
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Add,
                                         contentDescription = stringResource(
@@ -905,6 +915,20 @@ fun FolioMorphingBottomBar(
                                             .size(24.dp)
                                             .graphicsLayer { rotationZ = rotation },
                                     )
+                                    AnimatedVisibility(
+                                        visible = !controller.isDockMinimizedByScroll && !controller.selectionMode,
+                                        enter = fadeIn(MonoSpring.expressive<Float>()),
+                                        exit = fadeOut(MonoSpring.micro<Float>()),
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = stringResource(R.string.create),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1112,7 +1136,7 @@ private fun FolioMorphTabChip(
     val colorScheme = MaterialTheme.colorScheme
     val motionScheme = MaterialTheme.motionScheme
     val effectsColor = if (reducedMotion) tween(60) else motionScheme.fastEffectsSpec<Color>()
-    val fastSpatial = if (reducedMotion) tween(60) else motionScheme.fastSpatialSpec<Float>()
+    val fastSpatial = if (reducedMotion) tween(60) else MonoSpring.expressive<Float>()
 
     val bg by animateColorAsState(
         targetValue = if (isSelected) colorScheme.secondaryContainer else Color.Transparent,
@@ -1164,11 +1188,11 @@ private fun FolioMorphTabChip(
                 enter = expandHorizontally(
                     animationSpec = if (reducedMotion) tween(60) else motionScheme.defaultSpatialSpec(),
                     expandFrom = Alignment.Start,
-                ) + fadeIn(tween(110, delayMillis = 30, easing = LinearEasing)),
+                ) + fadeIn(MonoSpring.expressive<Float>()),
                 exit = shrinkHorizontally(
                     animationSpec = if (reducedMotion) tween(60) else motionScheme.defaultSpatialSpec(),
                     shrinkTowards = Alignment.Start,
-                ) + fadeOut(tween(70, easing = LinearEasing)),
+                ) + fadeOut(MonoSpring.micro<Float>()),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(6.dp))
@@ -1241,10 +1265,10 @@ private fun <S> AnimatedContentTransitionScope<S>.folioInnerMorphSpec(
     if (reducedMotion) {
         fadeIn(tween(70)) togetherWith fadeOut(tween(50))
     } else {
-        (fadeIn(tween(durationMillis = 150, delayMillis = 55, easing = LinearEasing)) +
+        (fadeIn(MonoSpring.expressive<Float>()) +
             scaleIn(initialScale = 0.94f, animationSpec = spatialSpec))
             .togetherWith(
-                fadeOut(tween(durationMillis = 65, easing = LinearEasing)) +
+                fadeOut(MonoSpring.micro<Float>()) +
                     scaleOut(targetScale = 0.94f, animationSpec = spatialSpec),
             )
             .using(SizeTransform(clip = false))
