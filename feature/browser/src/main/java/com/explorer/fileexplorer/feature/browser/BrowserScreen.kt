@@ -678,10 +678,10 @@ fun BrowserScreen(
                 .nestedScroll(scrollDistanceConnection)
                 .graphicsLayer {
                     val p = backPreviewProgress.value.coerceIn(0f, 1f)
-                    val scale = 1f - (0.12f * p)
+                    val scale = 1f - (0.04f * p)
                     scaleX = scale
                     scaleY = scale
-                    translationX = backPreviewDirection * 32.dp.toPx() * p
+                    translationX = backPreviewDirection * 18.dp.toPx() * p
                     shape = RoundedCornerShape(28.dp * p)
                     clip = p > 0f
                 },
