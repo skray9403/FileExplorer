@@ -56,10 +56,14 @@ fun FolioPreviewRoot(
             progress.collect { event ->
                 backSwipeEdge = event.swipeEdge
                 backPreviewAnim.snapTo(event.progress)
+                dockController.predictiveBackProgress = event.progress
+                dockController.predictiveBackEdgeSign = if (event.swipeEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
             }
             navigateBack()
+            dockController.predictiveBackProgress = 0f
             backPreviewAnim.animateTo(0f)
         } catch (_: CancellationException) {
+            dockController.predictiveBackProgress = 0f
             backPreviewAnim.animateTo(0f)
         }
     }
