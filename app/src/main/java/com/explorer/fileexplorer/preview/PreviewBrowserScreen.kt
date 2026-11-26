@@ -1,6 +1,7 @@
 package com.explorer.fileexplorer.preview
 
 import android.widget.Toast
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -184,7 +185,7 @@ fun PreviewBrowserScreen(
     var showLocationsSheet by remember { mutableStateOf(false) }
 
     val backPreviewAnim = remember { Animatable(0f) }
-    var backSwipeEdge by remember { mutableIntStateOf(0) }
+    var backSwipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
     var lastPathDepth by remember { mutableIntStateOf(currentPath.count { it == '/' }) }
     val goingUp = currentPath.count { it == '/' } < lastPathDepth
 
@@ -490,7 +491,7 @@ fun PreviewBrowserScreen(
                 .fillMaxSize()
                 .graphicsLayer {
                     val p = backPreviewAnim.value.coerceIn(0f, 1f)
-                    val dir = if (backSwipeEdge == 1) -1f else 1f
+                    val dir = if (backSwipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
                     val scale = 1f - (0.055f * p)
                     scaleX = scale
                     scaleY = scale

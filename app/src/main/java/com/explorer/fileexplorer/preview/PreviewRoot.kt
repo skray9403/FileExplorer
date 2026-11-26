@@ -1,7 +1,9 @@
 package com.explorer.fileexplorer.preview
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,13 +14,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.explorer.fileexplorer.core.designsystem.FolioDockController
 import com.explorer.fileexplorer.core.designsystem.FolioMorphingBottomBar
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun FolioPreviewRoot(
@@ -28,6 +33,8 @@ fun FolioPreviewRoot(
     val dockController = remember { FolioDockController() }
     val backStack = remember { mutableStateListOf(PreviewRoute.BROWSER) }
     val currentRoute = backStack.lastOrNull() ?: PreviewRoute.BROWSER
+    val backPreviewAnim = remember { Animatable(0f) }
+    var backSwipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
     val navigateTo: (PreviewRoute) -> Unit = { route ->
         if (route == PreviewRoute.BROWSER || route == PreviewRoute.COLLECTIONS) {
@@ -44,8 +51,17 @@ fun FolioPreviewRoot(
         }
     }
 
-    BackHandler(enabled = backStack.size > 1) {
-        navigateBack()
+    PredictiveBackHandler(enabled = backStack.size > 1) { progress ->
+        try {
+            progress.collect { event ->
+                backSwipeEdge = event.swipeEdge
+                backPreviewAnim.snapTo(event.progress)
+            }
+            navigateBack()
+            backPreviewAnim.animateTo(0f)
+        } catch (_: CancellationException) {
+            backPreviewAnim.animateTo(0f)
+        }
     }
 
     val showDock = currentRoute == PreviewRoute.BROWSER || currentRoute == PreviewRoute.COLLECTIONS
@@ -60,7 +76,9 @@ fun FolioPreviewRoot(
                         .togetherWith(fadeOut(tween(90)))
                 },
                 label = "previewRoute",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sideAwarePredictiveBack(backPreviewAnim.value, backSwipeEdge),
             ) { route ->
                 when (route) {
                     PreviewRoute.BROWSER -> PreviewBrowserScreen(

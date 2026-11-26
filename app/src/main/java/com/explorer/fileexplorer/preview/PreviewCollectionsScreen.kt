@@ -1,7 +1,9 @@
 package com.explorer.fileexplorer.preview
 
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +57,7 @@ import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,6 +73,8 @@ fun PreviewCollectionsScreen(
     var selectedCategory by remember { mutableStateOf<PreviewCategory?>(null) }
     var inlineSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    val backPreviewAnim = remember { Animatable(0f) }
+    var backSwipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
     val scrollThresholdPx = with(density) { 160.dp.toPx() }
     val showScrollToTop by remember(listState, scrollThresholdPx) {
@@ -77,16 +83,25 @@ fun PreviewCollectionsScreen(
         }
     }
 
-    BackHandler(enabled = selectedCategory != null || inlineSearchOpen) {
-        when {
-            inlineSearchOpen -> {
-                inlineSearchOpen = false
-                searchQuery = ""
+    PredictiveBackHandler(enabled = selectedCategory != null || inlineSearchOpen) { progress ->
+        try {
+            progress.collect { event ->
+                backSwipeEdge = event.swipeEdge
+                backPreviewAnim.snapTo(event.progress)
             }
-            selectedCategory != null -> {
-                selectedCategory = null
-                searchQuery = ""
+            when {
+                inlineSearchOpen -> {
+                    inlineSearchOpen = false
+                    searchQuery = ""
+                }
+                selectedCategory != null -> {
+                    selectedCategory = null
+                    searchQuery = ""
+                }
             }
+            backPreviewAnim.animateTo(0f)
+        } catch (_: CancellationException) {
+            backPreviewAnim.animateTo(0f)
         }
     }
 
@@ -150,7 +165,8 @@ fun PreviewCollectionsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .sideAwarePredictiveBack(backPreviewAnim.value, backSwipeEdge),
     ) {
         LazyColumn(
             state = listState,
