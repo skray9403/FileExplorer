@@ -996,13 +996,15 @@ fun SecurityScreen(
                             expanded = timeoutExpanded,
                             onDismissRequest = { timeoutExpanded = false },
                         ) {
-                            listOf(0, 30, 60, 300, 900).forEach { option ->
+                            listOf(0, 30, 60, 300, 900, 1800, 3600).forEach { option ->
                                 val optionLabel = when (option) {
                                     0 -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
                                     30 -> stringResource(DesignSystemR.string.app_lock_timeout_30_seconds)
                                     60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
                                     300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
-                                    else -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                                    900 -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                                    1800 -> stringResource(DesignSystemR.string.app_lock_timeout_30_minutes)
+                                    else -> stringResource(DesignSystemR.string.app_lock_timeout_1_hour)
                                 }
                                 DropdownMenuItem(
                                     text = { Text(optionLabel) },

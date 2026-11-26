@@ -1613,8 +1613,9 @@ private fun FloatingBrowserTopBar(
                             DropdownMenu(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
-                                shape = RoundedCornerShape(22.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 containerColor = colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.widthIn(max = 224.dp),
                             ) {
                                 if (insideArchive) {
                                     DropdownMenuItem(
