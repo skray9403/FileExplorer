@@ -17,7 +17,21 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        mavenCentral()
+        mavenCentral {
+            content {
+                excludeGroup("com.github.topjohnwu.libsu")
+                excludeGroup("com.github.thegrizzlylabs")
+            }
+        }
+        exclusiveContent {
+            forRepository {
+                maven { url = uri("https://jitpack.io") }
+            }
+            filter {
+                includeGroup("com.github.topjohnwu.libsu")
+                includeGroup("com.github.thegrizzlylabs")
+            }
+        }
     }
 }
 
