@@ -1,14 +1,13 @@
+package com.explorer.fileexplorer.feature.transfer
+
 import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.background
-import androidx.compose.ui.Alignment
-package com.explorer.fileexplorer.feature.transfer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,8 +82,7 @@ class TransferQueueViewModel @Inject constructor(
     fun clearFinished() = manager.clearFinished()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TransferQueueScreen(
     onNavigateBack: () -> Unit = {},

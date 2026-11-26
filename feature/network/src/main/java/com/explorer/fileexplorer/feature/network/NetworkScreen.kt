@@ -1,3 +1,5 @@
+package com.explorer.fileexplorer.feature.network
+
 import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
@@ -7,8 +9,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.background
-import androidx.compose.ui.Alignment
-package com.explorer.fileexplorer.feature.network
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -256,8 +256,7 @@ class NetworkViewModel @Inject constructor(
 
 // -- Screens --
 
-@OptIn(ExperimentalMaterial3Api::class)
-@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NetworkScreen(
     viewModel: NetworkViewModel = hiltViewModel(),
