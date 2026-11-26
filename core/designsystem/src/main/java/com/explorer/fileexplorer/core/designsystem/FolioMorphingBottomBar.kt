@@ -965,7 +965,7 @@ fun FolioSwitchableActionPopup(
     )
 
     Column(
-        modifier = modifier.widthIn(min = 216.dp, max = 264.dp),
+        modifier = modifier.widthIn(min = 196.dp, max = 216.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         // Top Header Pill: [Title] + [Circular ↕ Switch Button]
@@ -977,12 +977,12 @@ fun FolioSwitchableActionPopup(
             border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
+                .height(44.dp),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 18.dp, end = 6.dp),
+                    .padding(start = 14.dp, end = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -998,7 +998,7 @@ fun FolioSwitchableActionPopup(
                         shape = CircleShape,
                         color = colorScheme.secondaryContainer,
                         contentColor = colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(32.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -1018,8 +1018,8 @@ fun FolioSwitchableActionPopup(
         AnimatedContent(
             targetState = showSecondary && hasSecondary,
             transitionSpec = {
-                (fadeIn(tween(150, delayMillis = 40)) + scaleIn(initialScale = 0.95f, animationSpec = motionScheme.fastSpatialSpec()))
-                    .togetherWith(fadeOut(tween(70)))
+                (fadeIn(MonoSpring.expressive<Float>()) + scaleIn(initialScale = 0.97f, animationSpec = MonoSpring.expressive<Float>()))
+                    .togetherWith(fadeOut(MonoSpring.micro<Float>()))
             },
             label = "popupCardPage",
         ) { _ ->
@@ -1036,24 +1036,24 @@ fun FolioSwitchableActionPopup(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Surface(
                                 shape = CircleShape,
                                 color = if (action.selected) colorScheme.primary else colorScheme.surfaceContainerHighest,
                                 contentColor = if (action.selected) colorScheme.onPrimary else colorScheme.primary,
-                                modifier = Modifier.size(30.dp),
+                                modifier = Modifier.size(26.dp),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = action.icon,
                                         contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
+                                        modifier = Modifier.size(15.dp),
                                     )
                                 }
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(9.dp))
                             Text(
                                 text = stringResource(action.labelRes),
                                 style = MaterialTheme.typography.bodyMedium,
