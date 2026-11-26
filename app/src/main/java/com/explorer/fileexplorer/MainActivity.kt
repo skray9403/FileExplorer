@@ -1,140 +1,68 @@
 package com.explorer.fileexplorer
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.explorer.fileexplorer.core.designsystem.FileExplorerTheme
-import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import com.explorer.fileexplorer.core.designsystem.FolioAccentPalette
 import com.explorer.fileexplorer.core.designsystem.ThemeMode
-import com.explorer.fileexplorer.core.storage.PermissionHelper
-import com.explorer.fileexplorer.feature.settings.SettingsRepository
-import com.explorer.fileexplorer.navigation.AppNavigation
-import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.map
-import javax.inject.Inject
+import com.explorer.fileexplorer.preview.FolioPreviewRoot
+import com.explorer.fileexplorer.preview.PreviewAppearanceState
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
-    @Inject lateinit var permissionHelper: PermissionHelper
-    @Inject lateinit var settingsRepository: SettingsRepository
-
-    // Tracked at the activity level so onResume can refresh it after the user
-    // returns from the system settings page — Compose will recompose any
-    // collector when this MutableState changes.
-    private val hasPermissionState = mutableStateOf(false)
-    private val limitedStorageState = mutableStateOf(false)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        hasPermissionState.value = permissionHelper.hasFullStorageAccess()
-
         setContent {
-            val themeModeFlow = remember(settingsRepository) {
-                settingsRepository.settings.map { it.themeMode }
+            var appearance by remember { mutableStateOf(PreviewAppearanceState()) }
+            val systemDark = isSystemInDarkTheme()
+            val isDark = when (appearance.themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK, ThemeMode.OLED -> true
+                ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> systemDark
             }
-            val themeMode by themeModeFlow
-                .collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
 
-            FileExplorerTheme(themeMode = themeMode) {
+            SideEffect {
+                val barStyle = if (isDark) {
+                    SystemBarStyle.dark(Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(
+                    statusBarStyle = barStyle,
+                    navigationBarStyle = barStyle,
+                )
+            }
+
+            FileExplorerTheme(
+                themeMode = appearance.themeMode,
+                useDynamicColor = appearance.useDynamicColor,
+                accentPalette = appearance.accentPalette,
+                cornerStyle = appearance.cornerStyle,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (hasPermissionState.value || limitedStorageState.value) {
-                        AppNavigation(
-                            initialPath = if (limitedStorageState.value) {
-                                permissionHelper.scopedStorageRootPath()
-                            } else null,
-                        )
-                    } else {
-                        PermissionScreen(
-                            onGrantPermission = {
-                                startActivity(permissionHelper.getManageStorageIntent())
-                            },
-                            onContinueWithLimitedAccess = {
-                                limitedStorageState.value = true
-                            },
-                        )
-                    }
+                    FolioPreviewRoot(
+                        appearance = appearance,
+                        onAppearanceChange = { appearance = it },
+                    )
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        hasPermissionState.value = permissionHelper.hasFullStorageAccess()
-    }
-}
-
-@Composable
-private fun PermissionScreen(
-    onGrantPermission: () -> Unit,
-    onContinueWithLimitedAccess: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Storage,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(24.dp))
-        Text(
-            text = stringResource(DesignSystemR.string.storage_access_title),
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = stringResource(DesignSystemR.string.storage_access_message),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(32.dp))
-        Button(
-            onClick = onGrantPermission,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(DesignSystemR.string.grant_storage_access))
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onContinueWithLimitedAccess,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(DesignSystemR.string.continue_limited_storage))
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = stringResource(DesignSystemR.string.storage_access_limited_message),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(DesignSystemR.string.storage_access_settings),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

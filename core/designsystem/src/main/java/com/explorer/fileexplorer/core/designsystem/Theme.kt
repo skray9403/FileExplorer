@@ -2,141 +2,102 @@ package com.explorer.fileexplorer.core.designsystem
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Typography
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/**
- * Theme selector — persisted in DataStore by `feature:settings`.
- *
- * - [SYSTEM] follows the device's light/dark setting at runtime.
- * - [LIGHT] / [DARK] / [OLED] force a static palette.
- * - [DYNAMIC] uses Material You wallpaper-derived colors on Android 12+
- *   and gracefully falls back to [SYSTEM] on older devices.
- */
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK, OLED, DYNAMIC;
 
     companion object {
-        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.name == key } ?: SYSTEM
+        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.name == key } ?: DYNAMIC
     }
 }
 
-private val DarkColorScheme = darkColorScheme(
-    primary = AccentCyan,
-    onPrimary = DarkBackground,
-    primaryContainer = AccentCyanDark,
-    onPrimaryContainer = TextPrimary,
-    secondary = AccentPurple,
-    onSecondary = DarkBackground,
-    tertiary = AccentGreen,
-    background = DarkBackground,
-    onBackground = TextPrimary,
-    surface = DarkSurface,
-    onSurface = TextPrimary,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = TextSecondary,
-    outline = DarkBorder,
-    outlineVariant = DarkBorder,
-    error = AccentRed,
-    onError = DarkBackground,
-    surfaceContainerLowest = DarkBackground,
-    surfaceContainerLow = DarkSurface,
-    surfaceContainer = DarkSurfaceVariant,
-    surfaceContainerHigh = DarkSurfaceElevated,
-    surfaceContainerHighest = DarkSurfaceElevated,
-)
-
-private val OledColorScheme = darkColorScheme(
-    primary = AccentCyan,
-    onPrimary = OledBackground,
-    primaryContainer = AccentCyanDark,
-    onPrimaryContainer = TextPrimary,
-    secondary = AccentPurple,
-    onSecondary = OledBackground,
-    tertiary = AccentGreen,
-    background = OledBackground,
-    onBackground = TextPrimary,
-    surface = OledSurface,
-    onSurface = TextPrimary,
-    surfaceVariant = OledSurfaceVariant,
-    onSurfaceVariant = TextSecondary,
-    outline = OledBorder,
-    outlineVariant = OledBorder,
-    error = AccentRed,
-    onError = OledBackground,
-    surfaceContainerLowest = OledBackground,
-    surfaceContainerLow = OledSurface,
-    surfaceContainer = OledSurfaceVariant,
-    surfaceContainerHigh = OledSurfaceElevated,
-    surfaceContainerHighest = OledSurfaceElevated,
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = AccentCyanDark,
-    onPrimary = LightSurface,
-    primaryContainer = AccentCyanLight,
-    onPrimaryContainer = LightTextPrimary,
-    secondary = AccentPurple,
-    onSecondary = LightSurface,
-    tertiary = AccentGreen,
-    background = LightBackground,
-    onBackground = LightTextPrimary,
-    surface = LightSurface,
-    onSurface = LightTextPrimary,
-    surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = LightTextSecondary,
-    outline = LightBorder,
-    outlineVariant = LightBorder,
-    error = AccentRed,
-    onError = LightSurface,
-    surfaceContainerLowest = LightSurface,
-    surfaceContainerLow = LightBackground,
-    surfaceContainer = LightSurfaceVariant,
-    surfaceContainerHigh = LightSurfaceElevated,
-    surfaceContainerHighest = LightSurfaceElevated,
-)
-
 val AppTypography = Typography(
-    displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 28.sp),
-    headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp),
-    headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp),
-    titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-    titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 14.sp),
-    bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 14.sp),
-    bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 13.sp),
-    bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 12.sp),
-    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 13.sp),
-    labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp),
-    labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 10.sp),
+    displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 36.sp, lineHeight = 44.sp),
+    headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, lineHeight = 32.sp),
+    titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
+    titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
+    titleSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
+    bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
+    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp),
 )
 
+object FolioTheme {
+    val extendedColors: FolioExtendedColors
+        @Composable get() = LocalFolioExtendedColors.current
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FileExplorerTheme(
-    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeMode: ThemeMode = ThemeMode.DYNAMIC,
+    useDynamicColor: Boolean = true,
+    accentPalette: FolioAccentPalette = FolioAccentPalette.SAGE,
+    cornerStyle: String = "ROUNDED",
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
     val supportsDynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val effectiveMode = if (themeMode == ThemeMode.DYNAMIC && !supportsDynamic) ThemeMode.SYSTEM else themeMode
 
-    val colorScheme = when (effectiveMode) {
-        ThemeMode.LIGHT -> LightColorScheme
-        ThemeMode.DARK -> DarkColorScheme
-        ThemeMode.OLED -> OledColorScheme
-        ThemeMode.DYNAMIC ->
-            if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        ThemeMode.SYSTEM -> if (systemDark) DarkColorScheme else LightColorScheme
+    val isDark = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK, ThemeMode.OLED -> true
+        ThemeMode.DYNAMIC, ThemeMode.SYSTEM -> systemDark
+    }
+    val isOled = themeMode == ThemeMode.OLED
+    val applyDynamic = supportsDynamic && (useDynamicColor || themeMode == ThemeMode.DYNAMIC)
+
+    val colorScheme = if (applyDynamic) {
+        val dynamicBase = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        if (isOled) {
+            dynamicBase.copy(
+                background = OledBackground,
+                surface = OledBackground,
+                surfaceContainerLowest = OledBackground,
+                surfaceContainerLow = Color(0xFF0D0F0E),
+                surfaceContainer = Color(0xFF141716),
+                surfaceContainerHigh = Color(0xFF1D211F),
+                surfaceContainerHighest = Color(0xFF272B29),
+            )
+        } else {
+            dynamicBase
+        }
+    } else {
+        resolveStaticColorScheme(palette = accentPalette, isDark = isDark, oled = isOled)
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AppTypography,
-        content = content,
-    )
+    val extendedColors = if (isDark) DarkExtendedColors else LightExtendedColors
+    val shapes = getFolioShapes(cornerStyle)
+
+    CompositionLocalProvider(
+        LocalFolioExtendedColors provides extendedColors,
+        LocalCornerStyle provides cornerStyle,
+    ) {
+        MaterialExpressiveTheme(
+            colorScheme = colorScheme,
+            typography = AppTypography,
+            shapes = shapes,
+            motionScheme = MotionScheme.expressive(),
+            content = content,
+        )
+    }
 }
