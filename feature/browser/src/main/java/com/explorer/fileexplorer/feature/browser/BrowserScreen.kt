@@ -342,7 +342,7 @@ fun BrowserScreen(
                     }
                 }
                 is BrowserEvent.RequestDecrypt -> {
-                    val activity = context as? FragmentActivity
+                    val activity = context.findActivity() as? FragmentActivity
                     if (activity == null) {
                         Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
                     } else {
@@ -358,7 +358,7 @@ fun BrowserScreen(
                     }
                 }
                 is BrowserEvent.RequestVaultAdd -> {
-                    val activity = context as? FragmentActivity
+                    val activity = context.findActivity() as? FragmentActivity
                     if (activity == null) {
                         Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
                     } else {
