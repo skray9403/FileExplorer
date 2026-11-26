@@ -588,4 +588,7 @@
     <string name="no_encrypted_volumes_mounted">No encrypted volumes mounted.</string>
     <string name="app_lock_timeout_title">App lock timeout</string>
     <string name="parent_folder">Parent folder</string>
+    <string name="copy_path">Copy path</string>
+    <string name="close_this_tab">Close tab</string>
+    <string name="tab_actions">Tab options</string>
 </resources>
