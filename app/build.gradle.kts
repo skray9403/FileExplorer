@@ -88,5 +88,5 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.compose.ui.tooling.preview)
 
-    testImplementation(kotlin("test"))
+    testImplementation(kotlin("test-junit"))
 }
