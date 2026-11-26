@@ -969,6 +969,8 @@ fun SecurityScreen(
                     60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
                     300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
                     900 -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                    1800 -> stringResource(DesignSystemR.string.app_lock_timeout_30_minutes)
+                    3600 -> stringResource(DesignSystemR.string.app_lock_timeout_1_hour)
                     else -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
