@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun FolioTopScrim(
-    height: Dp,
+    height: Dp = 100.dp,
     modifier: Modifier = Modifier,
     baseColor: Color = MaterialTheme.colorScheme.background,
     solidStop: Float = 0.38f,
