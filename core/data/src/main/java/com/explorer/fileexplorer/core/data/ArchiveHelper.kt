@@ -161,11 +161,12 @@ class ArchiveHelper @Inject constructor() {
         }.getOrElse { return@withContext Result.failure(it) }
         val stagedOutput = operationRoot.resolve("payload").resolve("${output.name}.part")
         requireNotNull(stagedOutput.parentFile).mkdirs()
+        val totalBytes = calculateSourceBytes(sourcePaths)
         try {
             when (format) {
-                ArchiveFormat.ZIP -> createZip(stagedOutput.path, sourcePaths, password, compressionLevel, onProgress)
-                ArchiveFormat.SEVEN_Z -> create7z(stagedOutput.path, sourcePaths, compressionLevel, onProgress)
-                ArchiveFormat.TAR_GZ -> createTarGz(stagedOutput.path, sourcePaths, onProgress)
+                ArchiveFormat.ZIP -> createZip(stagedOutput.path, sourcePaths, password, compressionLevel, totalBytes, onProgress)
+                ArchiveFormat.SEVEN_Z -> create7z(stagedOutput.path, sourcePaths, compressionLevel, totalBytes, onProgress)
+                ArchiveFormat.TAR_GZ -> createTarGz(stagedOutput.path, sourcePaths, totalBytes, onProgress)
             }
             FileOperationStaging.forceFile(stagedOutput)
             commitStagedFile(stagedOutput, output, operationRoot)
@@ -177,6 +178,15 @@ class ArchiveHelper @Inject constructor() {
         } catch (e: Exception) {
             FileOperationStaging.recoverOrphaned(outputParent)
             Result.failure(e)
+        }
+    }
+
+    private fun calculateSourceBytes(sourcePaths: List<String>): Long = sourcePaths.sumOf { path ->
+        val file = File(path)
+        if (file.isDirectory) {
+            file.walkTopDown().filter(File::isFile).sumOf(File::length)
+        } else {
+            file.length().coerceAtLeast(0L)
         }
     }
 
@@ -481,9 +491,12 @@ class ArchiveHelper @Inject constructor() {
         return count
     }
 
-    private fun createZip(
-        outputPath: String, sourcePaths: List<String>,
-        password: CharArray?, level: Int,
+    private suspend fun createZip(
+        outputPath: String,
+        sourcePaths: List<String>,
+        password: CharArray?,
+        level: Int,
+        totalBytes: Long,
         onProgress: (Long, Long, String) -> Unit,
     ) {
         val zipFile = ZipFile(outputPath)
@@ -504,14 +517,19 @@ class ArchiveHelper @Inject constructor() {
             }
         }
 
+        var writtenBytes = 0L
         for (sourcePath in sourcePaths) {
+            coroutineContext.ensureActive()
             val file = File(sourcePath)
-            onProgress(0, 0, file.name)
+            onProgress(writtenBytes, totalBytes, file.name)
             if (file.isDirectory) {
                 zipFile.addFolder(file, params)
+                writtenBytes += calculateSourceBytes(listOf(sourcePath))
             } else {
                 zipFile.addFile(file, params)
+                writtenBytes += file.length().coerceAtLeast(0L)
             }
+            onProgress(writtenBytes.coerceAtMost(totalBytes), totalBytes, file.name)
         }
     }
 
@@ -581,42 +599,57 @@ class ArchiveHelper @Inject constructor() {
         return count
     }
 
-    private fun create7z(
-        outputPath: String, sourcePaths: List<String>,
+    private suspend fun create7z(
+        outputPath: String,
+        sourcePaths: List<String>,
         level: Int,
+        totalBytes: Long,
         onProgress: (Long, Long, String) -> Unit,
     ) {
+        val written = LongArray(1)
         val output = org.apache.commons.compress.archivers.sevenz.SevenZOutputFile(File(outputPath))
         output.use { out ->
             for (sourcePath in sourcePaths) {
-                addTo7z(out, File(sourcePath), "", onProgress)
+                addTo7z(out, File(sourcePath), "", written, totalBytes, onProgress)
             }
         }
     }
 
-    private fun addTo7z(
+    private suspend fun addTo7z(
         out: org.apache.commons.compress.archivers.sevenz.SevenZOutputFile,
-        file: File, base: String,
+        file: File,
+        base: String,
+        written: LongArray,
+        totalBytes: Long,
         onProgress: (Long, Long, String) -> Unit,
     ) {
+        coroutineContext.ensureActive()
         val entryName = if (base.isEmpty()) file.name else "$base/${file.name}"
         if (file.isDirectory) {
             val entry = out.createArchiveEntry(file, "$entryName/")
             out.putArchiveEntry(entry)
             out.closeArchiveEntry()
-            file.listFiles()?.forEach { child -> addTo7z(out, child, entryName, onProgress) }
+            file.listFiles()?.forEach { child -> addTo7z(out, child, entryName, written, totalBytes, onProgress) }
         } else {
             val entry = out.createArchiveEntry(file, entryName)
             out.putArchiveEntry(entry)
             FileInputStream(file).use { fis ->
-                val buf = ByteArray(8192)
+                val buf = ByteArray(16 * 1024)
+                var sinceReport = 0L
                 var len: Int
                 while (fis.read(buf).also { len = it } != -1) {
+                    coroutineContext.ensureActive()
                     out.write(buf, 0, len)
+                    written[0] += len
+                    sinceReport += len
+                    if (sinceReport >= 64 * 1024) {
+                        onProgress(written[0], totalBytes, file.name)
+                        sinceReport = 0L
+                    }
                 }
             }
             out.closeArchiveEntry()
-            onProgress(0, 0, file.name)
+            onProgress(written[0], totalBytes, file.name)
         }
     }
 
@@ -792,10 +825,13 @@ class ArchiveHelper @Inject constructor() {
         return count
     }
 
-    private fun createTarGz(
-        outputPath: String, sourcePaths: List<String>,
+    private suspend fun createTarGz(
+        outputPath: String,
+        sourcePaths: List<String>,
+        totalBytes: Long,
         onProgress: (Long, Long, String) -> Unit,
     ) {
+        val written = LongArray(1)
         val fos = FileOutputStream(outputPath)
         val gzos = CompressorStreamFactory().createCompressorOutputStream(CompressorStreamFactory.GZIP, fos)
         val tarOut = ArchiveStreamFactory().createArchiveOutputStream(ArchiveStreamFactory.TAR, gzos)
@@ -805,7 +841,7 @@ class ArchiveHelper @Inject constructor() {
 
         tarOut.use { out ->
             for (sourcePath in sourcePaths) {
-                addToTar(out, File(sourcePath), "", onProgress)
+                addToTar(out, File(sourcePath), "", written, totalBytes, onProgress)
             }
         }
     }
@@ -814,29 +850,41 @@ class ArchiveHelper @Inject constructor() {
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
     }.getOrNull() ?: "application/octet-stream"
 
-    private fun addToTar(
+    private suspend fun addToTar(
         out: org.apache.commons.compress.archivers.tar.TarArchiveOutputStream,
-        file: File, base: String,
+        file: File,
+        base: String,
+        written: LongArray,
+        totalBytes: Long,
         onProgress: (Long, Long, String) -> Unit,
     ) {
+        coroutineContext.ensureActive()
         val entryName = if (base.isEmpty()) file.name else "$base/${file.name}"
         if (file.isDirectory) {
             val entry = out.createArchiveEntry(file, "$entryName/")
             out.putArchiveEntry(entry)
             out.closeArchiveEntry()
-            file.listFiles()?.forEach { child -> addToTar(out, child, entryName, onProgress) }
+            file.listFiles()?.forEach { child -> addToTar(out, child, entryName, written, totalBytes, onProgress) }
         } else {
             val entry = out.createArchiveEntry(file, entryName)
             out.putArchiveEntry(entry)
             FileInputStream(file).use { fis ->
-                val buf = ByteArray(8192)
+                val buf = ByteArray(16 * 1024)
+                var sinceReport = 0L
                 var len: Int
                 while (fis.read(buf).also { len = it } != -1) {
+                    coroutineContext.ensureActive()
                     out.write(buf, 0, len)
+                    written[0] += len
+                    sinceReport += len
+                    if (sinceReport >= 64 * 1024) {
+                        onProgress(written[0], totalBytes, file.name)
+                        sinceReport = 0L
+                    }
                 }
             }
             out.closeArchiveEntry()
-            onProgress(0, 0, file.name)
+            onProgress(written[0], totalBytes, file.name)
         }
     }
 }

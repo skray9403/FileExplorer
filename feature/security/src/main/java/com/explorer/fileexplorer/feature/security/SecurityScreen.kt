@@ -18,12 +18,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.fragment.app.FragmentActivity
@@ -54,6 +56,72 @@ import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Eject
+import androidx.compose.material.icons.rounded.EnhancedEncryption
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import com.explorer.fileexplorer.core.designsystem.topEdgeFeatherFade
+import com.explorer.fileexplorer.core.storage.KeyHardwareLevel
+import com.explorer.fileexplorer.core.storage.StrongBoxKeyFactory
+import androidx.compose.material.icons.rounded.LockReset
+import androidx.activity.compose.PredictiveBackHandler
+import kotlin.coroutines.cancellation.CancellationException
 
 private val Context.securityDataStore by preferencesDataStore("security_prefs")
 
@@ -65,20 +133,29 @@ class SecurityRepository @Inject constructor(
 ) {
     private object Keys {
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
+        val APP_LOCK_TIMEOUT_SECONDS = intPreferencesKey("app_lock_timeout_seconds")
         val VAULT_ENABLED = booleanPreferencesKey("vault_enabled")
         val SECURE_DELETE_ENABLED = booleanPreferencesKey("secure_delete_enabled")
+        val INVALIDATE_ON_BIOMETRIC_CHANGE = booleanPreferencesKey("invalidate_on_biometric_change")
     }
 
     val settings: Flow<SecuritySettings> = context.securityDataStore.data.map { prefs ->
         SecuritySettings(
             appLockEnabled = prefs[Keys.APP_LOCK_ENABLED] ?: false,
+            appLockTimeoutSeconds = prefs[Keys.APP_LOCK_TIMEOUT_SECONDS] ?: 0,
             vaultEnabled = prefs[Keys.VAULT_ENABLED] ?: false,
             secureDeleteEnabled = prefs[Keys.SECURE_DELETE_ENABLED] ?: false,
+            invalidateKeysOnBiometricChange = prefs[Keys.INVALIDATE_ON_BIOMETRIC_CHANGE] ?: false,
         )
     }
 
     suspend fun setAppLock(enabled: Boolean) {
         context.securityDataStore.edit { it[Keys.APP_LOCK_ENABLED] = enabled }
+    }
+
+    suspend fun setAppLockTimeout(seconds: Int) {
+        require(seconds in setOf(0, 30, 60, 300, 900))
+        context.securityDataStore.edit { it[Keys.APP_LOCK_TIMEOUT_SECONDS] = seconds }
     }
 
     suspend fun setVaultEnabled(enabled: Boolean) {
@@ -87,6 +164,10 @@ class SecurityRepository @Inject constructor(
 
     suspend fun setSecureDelete(enabled: Boolean) {
         context.securityDataStore.edit { it[Keys.SECURE_DELETE_ENABLED] = enabled }
+    }
+
+    suspend fun setInvalidateOnBiometricChange(enabled: Boolean) {
+        context.securityDataStore.edit { it[Keys.INVALIDATE_ON_BIOMETRIC_CHANGE] = enabled }
     }
 
     /** Check if device supports biometric authentication. */
@@ -98,8 +179,10 @@ class SecurityRepository @Inject constructor(
 
 data class SecuritySettings(
     val appLockEnabled: Boolean = false,
+    val appLockTimeoutSeconds: Int = 0,
     val vaultEnabled: Boolean = false,
     val secureDeleteEnabled: Boolean = false,
+    val invalidateKeysOnBiometricChange: Boolean = false,
 )
 
 // -- Biometric Helper --
@@ -164,22 +247,26 @@ object ChecksumUtil {
 @Singleton
 class VaultManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val securityRepository: SecurityRepository,
 ) {
     private val vaultDir: File get() = File(context.filesDir, ".vault")
     private val indexFile: File get() = File(vaultDir, INDEX_NAME)
+    private val masterKeyFile: File get() = File(vaultDir, MASTER_KEY_NAME)
 
     private companion object {
-        const val KEYSTORE_ALIAS = "file_explorer_vault_v2"
+        const val KEYSTORE_ALIAS_V2 = "file_explorer_vault_v2"
+        const val KEYSTORE_ALIAS_V3_STRONGBOX = "file_explorer_vault_kek_v3_sb"
+        const val MASTER_KEY_NAME = "master.key.v3"
         const val INDEX_NAME = "index.v1"
         const val TEMP_PREFIX = ".fileexplorer-vault-"
     }
 
-    private fun getOrCreateKey(): javax.crypto.SecretKey {
+    private fun getLegacyV2Key(): javax.crypto.SecretKey {
         val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
         ks.load(null)
-        ks.getKey(KEYSTORE_ALIAS, null)?.let { return it as javax.crypto.SecretKey }
+        ks.getKey(KEYSTORE_ALIAS_V2, null)?.let { return it as javax.crypto.SecretKey }
         val spec = android.security.keystore.KeyGenParameterSpec.Builder(
-            KEYSTORE_ALIAS,
+            KEYSTORE_ALIAS_V2,
             android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
         )
             .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
@@ -193,6 +280,38 @@ class VaultManager @Inject constructor(
         return keygen.generateKey()
     }
 
+    private fun writeMasterKey(dekBytes: ByteArray, kek: javax.crypto.SecretKey) {
+        val wrapCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.ENCRYPT_MODE, kek)
+        }
+        val wrapIv = wrapCipher.iv
+        val wrappedBytes = wrapCipher.doFinal(dekBytes)
+        val temporary = File(vaultDir, TEMP_PREFIX + UUID.randomUUID() + ".master.tmp")
+        try {
+            FileOutputStream(temporary, false).use { out ->
+                out.write(wrapIv.size and 0xff)
+                out.write(wrapIv)
+                out.write(wrappedBytes)
+                out.fd.sync()
+            }
+            moveIntoPlace(temporary, masterKeyFile)
+        } finally {
+            runCatching { Files.deleteIfExists(temporary.toPath()) }
+        }
+    }
+
+    private fun unwrapMasterKey(bytes: ByteArray, kek: javax.crypto.SecretKey): ByteArray {
+        require(bytes.isNotEmpty()) { "Master key file is empty" }
+        val wrapIvLen = bytes[0].toInt() and 0xff
+        require(wrapIvLen in 1..32 && bytes.size > 1 + wrapIvLen) { "Invalid master key file header" }
+        val wrapIv = bytes.copyOfRange(1, 1 + wrapIvLen)
+        val wrappedBytes = bytes.copyOfRange(1 + wrapIvLen, bytes.size)
+        val unwrapCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.DECRYPT_MODE, kek, javax.crypto.spec.GCMParameterSpec(128, wrapIv))
+        }
+        return unwrapCipher.doFinal(wrappedBytes)
+    }
+
     /**
      * Opens a vault session. The caller must invoke this only after the configured
      * biometric/device-credential gate has completed successfully.
@@ -200,9 +319,36 @@ class VaultManager @Inject constructor(
     suspend fun unlock(): Result<VaultSession> = withContext(Dispatchers.IO) {
         runCatching {
             ensureVaultDirectory()
-            val key = getOrCreateKey()
-            readRecords(key)
-            VaultSession(key)
+            val hasMasterKey = Files.exists(masterKeyFile.toPath(), LinkOption.NOFOLLOW_LINKS)
+            val hasLegacyIndex = Files.exists(indexFile.toPath(), LinkOption.NOFOLLOW_LINKS)
+            if (!hasMasterKey && hasLegacyIndex) {
+                val legacyKey = getLegacyV2Key()
+                readRecords(legacyKey)
+                return@runCatching VaultSession(legacyKey)
+            }
+            val invalidateOnChange = securityRepository.settings.first().invalidateKeysOnBiometricChange
+            val kek = StrongBoxKeyFactory.getOrCreateAesGcmKey(
+                context = context,
+                alias = KEYSTORE_ALIAS_V3_STRONGBOX,
+                requireUserAuth = true,
+                authValiditySeconds = 15,
+                invalidateOnNewBiometric = invalidateOnChange,
+            )
+            val dekBytes = if (hasMasterKey) {
+                unwrapMasterKey(masterKeyFile.readBytes(), kek)
+            } else {
+                ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.also { freshDek ->
+                    writeMasterKey(freshDek, kek)
+                }
+            }
+            val dek = javax.crypto.spec.SecretKeySpec(dekBytes, "AES")
+            try {
+                readRecords(dek)
+                VaultSession(dek, dekBytes)
+            } catch (error: Throwable) {
+                dekBytes.fill(0)
+                throw error
+            }
         }
     }
 
@@ -339,7 +485,9 @@ class VaultManager @Inject constructor(
         ensureVaultDirectory()
         val files = vaultDir.listFiles().orEmpty()
         val unexpected = files.filter { file ->
-            file.name != INDEX_NAME && !file.name.startsWith(TEMP_PREFIX) &&
+            file.name != INDEX_NAME &&
+                file.name != MASTER_KEY_NAME &&
+                !file.name.startsWith(TEMP_PREFIX) &&
                 !file.name.endsWith(VaultFilePolicy.PAYLOAD_SUFFIX)
         }
         require(unexpected.isEmpty()) { "Unrecognized vault storage entry" }
@@ -412,6 +560,7 @@ class VaultManager @Inject constructor(
 data class SecurityUiState(
     val settings: SecuritySettings = SecuritySettings(),
     val canUseBiometrics: Boolean = false,
+    val hardwareLevel: KeyHardwareLevel = KeyHardwareLevel.TEE,
     val vaultEntries: List<VaultEntry> = emptyList(),
     val vaultUnlocked: Boolean = false,
     val isVaultBusy: Boolean = false,
@@ -428,6 +577,7 @@ data class SecurityUiState(
 
 @HiltViewModel
 class SecurityViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val securityRepo: SecurityRepository,
     private val vaultManager: VaultManager,
     private val integrityRepository: IntegrityRepository,
@@ -443,7 +593,8 @@ class SecurityViewModel @Inject constructor(
     private var vaultSession: VaultSession? = null
 
     init {
-        _state.update { it.copy(canUseBiometrics = securityRepo.canUseBiometrics()) }
+        val hwLevel = StrongBoxKeyFactory.inspectHardwareLevel(context, "file_explorer_vault_kek_v3_sb")
+        _state.update { it.copy(canUseBiometrics = securityRepo.canUseBiometrics(), hardwareLevel = hwLevel) }
         viewModelScope.launch {
             securityRepo.settings.collect { settings ->
                 _state.update { it.copy(settings = settings) }
@@ -459,6 +610,14 @@ class SecurityViewModel @Inject constructor(
     }
 
     fun toggleAppLock() { viewModelScope.launch { securityRepo.setAppLock(!_state.value.settings.appLockEnabled) } }
+    fun setAppLockTimeout(seconds: Int) {
+        viewModelScope.launch { securityRepo.setAppLockTimeout(seconds) }
+    }
+    fun toggleInvalidateOnBiometricChange() {
+        viewModelScope.launch {
+            securityRepo.setInvalidateOnBiometricChange(!_state.value.settings.invalidateKeysOnBiometricChange)
+        }
+    }
     fun toggleVault() {
         val enabled = !_state.value.settings.vaultEnabled
         if (enabled && !_state.value.canUseBiometrics) {
@@ -494,12 +653,22 @@ class SecurityViewModel @Inject constructor(
                         .onFailure { error ->
                             vaultManager.lock(session)
                             _state.update { it.copy(isVaultBusy = false) }
-                            _toasts.emit("Vault unlock failed: ${error.message}")
+                            val msg = if (StrongBoxKeyFactory.isKeyInvalidated(error)) {
+                                context.getString(DesignSystemR.string.key_invalidated_error)
+                            } else {
+                                "Vault unlock failed: ${error.message}"
+                            }
+                            _toasts.emit(msg)
                         }
                 }
                 .onFailure { error ->
                     _state.update { it.copy(isVaultBusy = false) }
-                    _toasts.emit("Vault unlock failed: ${error.message}")
+                    val msg = if (StrongBoxKeyFactory.isKeyInvalidated(error)) {
+                        context.getString(DesignSystemR.string.key_invalidated_error)
+                    } else {
+                        "Vault unlock failed: ${error.message}"
+                    }
+                    _toasts.emit(msg)
                 }
         }
     }
@@ -671,9 +840,15 @@ class SecurityViewModel @Inject constructor(
     }
 }
 
-// -- Screen --
+// -- Screen UI (Material 3 Expressive) --
 
-@OptIn(ExperimentalMaterial3Api::class)
+
+/**
+ * Drop-in M3 Expressive UI replacement for the composable section of SecurityScreen.kt.
+ * Keep SecurityRepository, BiometricHelper, ChecksumUtil, VaultManager, and SecurityViewModel
+ * untouched in SecurityScreen.kt and replace only the `@Composable fun SecurityScreen(...)`
+ * and its private UI helpers below.
+ */
 @Composable
 fun SecurityScreen(
     viewModel: SecurityViewModel = hiltViewModel(),
@@ -688,13 +863,14 @@ fun SecurityScreen(
         )
     }
     var showIntegrityPathDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
     DisposableEffect(Unit) { onDispose { viewModel.lockVault() } }
 
     fun authenticateVault(title: String, subtitle: String, onSuccess: () -> Unit) {
         val activity = context as? FragmentActivity
         if (activity == null) {
-            Toast.makeText(context, context.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.biometrics_unavailable), Toast.LENGTH_SHORT).show()
         } else {
             securityEntryPoint.biometricHelper().showBiometricPrompt(
                 activity = activity,
@@ -702,14 +878,14 @@ fun SecurityScreen(
                 subtitle = subtitle,
                 onSuccess = onSuccess,
                 onFailure = { reason ->
-                    Toast.makeText(context, context.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.applicationContext.getString(DesignSystemR.string.vault_authentication_cancelled, reason), Toast.LENGTH_SHORT).show()
                 },
             )
         }
     }
 
     if (showIntegrityPathDialog) {
-        IntegrityPathDialog(
+        ExpressiveIntegrityPathDialog(
             onConfirm = { path ->
                 showIntegrityPathDialog = false
                 viewModel.addIntegrityPath(path)
@@ -717,8 +893,9 @@ fun SecurityScreen(
             onDismiss = { showIntegrityPathDialog = false },
         )
     }
+
     if (state.showEncryptedVolumeDialog) {
-        EncryptedVolumeDialog(
+        ExpressiveEncryptedVolumeDialog(
             formats = state.encryptedFormats,
             isMounting = state.isMountingEncryptedVolume,
             onConfirm = { format, cipherPath, mountPath, readOnly, passphrase ->
@@ -728,338 +905,498 @@ fun SecurityScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(DesignSystemR.string.security)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } })
-        },
-    ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
+                start = 16.dp,
+                end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
             // App Lock
-            item {
-                Text(stringResource(DesignSystemR.string.app_lock).uppercase(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.biometric_lock)) },
-                    supportingContent = { Text(stringResource(DesignSystemR.string.require_biometric)) },
-                    leadingContent = { Icon(Icons.Filled.Fingerprint, null) },
-                    trailingContent = {
-                        Switch(checked = state.settings.appLockEnabled,
-                            onCheckedChange = { viewModel.toggleAppLock() },
-                            enabled = state.canUseBiometrics)
-                    },
-                )
-            }
-            if (!state.canUseBiometrics) {
-                item {
-                    Text("  ${stringResource(DesignSystemR.string.biometrics_unavailable)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp))
+            item(key = "sec_app_lock") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.app_lock))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 2) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.Fingerprint,
+                                title = stringResource(DesignSystemR.string.biometric_lock),
+                                subtitle = if (state.canUseBiometrics) {
+                                    stringResource(DesignSystemR.string.require_biometric)
+                                } else {
+                                    stringResource(DesignSystemR.string.biometrics_unavailable)
+                                },
+                                checked = state.settings.appLockEnabled,
+                                enabled = state.canUseBiometrics,
+                                onCheckedChange = { viewModel.toggleAppLock() },
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 2) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.LockReset,
+                                title = stringResource(DesignSystemR.string.invalidate_on_biometric_change),
+                                subtitle = stringResource(DesignSystemR.string.invalidate_on_biometric_change_desc),
+                                checked = state.settings.invalidateKeysOnBiometricChange,
+                                enabled = state.canUseBiometrics,
+                                onCheckedChange = { viewModel.toggleInvalidateOnBiometricChange() },
+                            )
+                        }
+                    }
                 }
             }
 
-            // Vault
-            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item {
-                Text(stringResource(DesignSystemR.string.encrypted_vault).uppercase(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.enable_vault)) },
-                    supportingContent = { Text(stringResource(DesignSystemR.string.vault_description)) },
-                    leadingContent = { Icon(Icons.Filled.Lock, null) },
-                    trailingContent = {
-                        Switch(
-                            checked = state.settings.vaultEnabled,
-                            onCheckedChange = { viewModel.toggleVault() },
-                            enabled = state.canUseBiometrics,
-                        )
-                    },
-                )
-            }
-            if (state.settings.vaultEnabled) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (state.vaultUnlocked) {
-                            OutlinedButton(
-                                onClick = viewModel::lockVault,
-                                enabled = !state.isVaultBusy,
-                                modifier = Modifier.weight(1f),
+            item(key = "sec_app_lock_timeout") {
+                var timeoutExpanded by remember { mutableStateOf(false) }
+                val seconds = state.settings.appLockTimeoutSeconds
+                val label = when (seconds) {
+                    0 -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
+                    30 -> stringResource(DesignSystemR.string.app_lock_timeout_30_seconds)
+                    60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
+                    300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
+                    900 -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                    1800 -> stringResource(DesignSystemR.string.app_lock_timeout_30_minutes)
+                    3600 -> stringResource(DesignSystemR.string.app_lock_timeout_1_hour)
+                    else -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.lock_after_leaving_app))
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            onClick = { timeoutExpanded = true },
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                Icon(Icons.Filled.Lock, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(DesignSystemR.string.vault_lock))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(DesignSystemR.string.app_lock_timeout_title), style = MaterialTheme.typography.titleSmall)
+                                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Filled.ExpandMore, contentDescription = null)
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = timeoutExpanded,
+                            onDismissRequest = { timeoutExpanded = false },
+                        ) {
+                            listOf(0, 30, 60, 300, 900, 1800, 3600).forEach { option ->
+                                val optionLabel = when (option) {
+                                    0 -> stringResource(DesignSystemR.string.app_lock_timeout_immediately)
+                                    30 -> stringResource(DesignSystemR.string.app_lock_timeout_30_seconds)
+                                    60 -> stringResource(DesignSystemR.string.app_lock_timeout_1_minute)
+                                    300 -> stringResource(DesignSystemR.string.app_lock_timeout_5_minutes)
+                                    900 -> stringResource(DesignSystemR.string.app_lock_timeout_15_minutes)
+                                    1800 -> stringResource(DesignSystemR.string.app_lock_timeout_30_minutes)
+                                    else -> stringResource(DesignSystemR.string.app_lock_timeout_1_hour)
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(optionLabel) },
+                                    onClick = {
+                                        viewModel.setAppLockTimeout(option)
+                                        timeoutExpanded = false
+                                    },
+                                    trailingIcon = {
+                                        if (seconds == option) Icon(Icons.Filled.Check, contentDescription = null)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Encrypted Vault
+            item(key = "sec_vault") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.encrypted_vault))
+                    val totalRows = 1 + (if (state.settings.vaultEnabled) 1 else 0) +
+                        (if (state.settings.vaultEnabled && state.vaultUnlocked) state.vaultEntries.size.coerceAtLeast(1) else 0)
+                    var idx = 0
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = idx++, count = totalRows) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.Lock,
+                                title = stringResource(DesignSystemR.string.enable_vault),
+                                subtitle = stringResource(DesignSystemR.string.vault_description),
+                                checked = state.settings.vaultEnabled,
+                                enabled = state.canUseBiometrics,
+                                onCheckedChange = { viewModel.toggleVault() },
+                            )
+                        }
+                        if (state.settings.vaultEnabled) {
+                            FolioSegmentedCard(index = idx++, count = totalRows) {
+                                Box(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                                    if (state.vaultUnlocked) {
+                                        OutlinedButton(
+                                            onClick = viewModel::lockVault,
+                                            enabled = !state.isVaultBusy,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(Icons.Rounded.Lock, null)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(stringResource(DesignSystemR.string.vault_lock))
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                authenticateVault(
+                                                    title = context.applicationContext.getString(DesignSystemR.string.vault_unlock),
+                                                    subtitle = context.applicationContext.getString(DesignSystemR.string.authenticate_to_view_protected_files),
+                                                    onSuccess = viewModel::unlockVault,
+                                                )
+                                            },
+                                            enabled = !state.isVaultBusy && state.canUseBiometrics,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(Icons.Rounded.LockOpen, null)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(stringResource(DesignSystemR.string.vault_unlock))
+                                        }
+                                    }
+                                }
+                            }
+                            if (state.vaultUnlocked) {
+                                if (state.vaultEntries.isEmpty()) {
+                                    FolioSegmentedCard(index = idx, count = totalRows) {
+                                        Text(
+                                            text = stringResource(DesignSystemR.string.vault_empty),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(16.dp),
+                                        )
+                                    }
+                                } else {
+                                    state.vaultEntries.forEach { entry ->
+                                        FolioSegmentedCard(index = idx++, count = totalRows) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(entry.displayName, style = MaterialTheme.typography.titleSmall)
+                                                    Text(stringResource(DesignSystemR.string.vault_entry_size, entry.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                TextButton(onClick = { viewModel.restoreVaultEntry(entry) }, enabled = !state.isVaultBusy) {
+                                                    Text(stringResource(DesignSystemR.string.vault_restore))
+                                                }
+                                                IconButton(onClick = { viewModel.deleteVaultEntry(entry) }, enabled = !state.isVaultBusy) {
+                                                    Icon(Icons.Rounded.DeleteForever, stringResource(DesignSystemR.string.vault_delete))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // File Security
+            item(key = "sec_file_security") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.file_security))
+                    FolioSegmentedColumn {
+                        val fileSecCount = if (state.checksumResult != null) 4 else 3
+                        FolioSegmentedCard(index = 0, count = fileSecCount) {
+                            SecuritySwitchRow(
+                                icon = Icons.Rounded.DeleteForever,
+                                title = stringResource(DesignSystemR.string.secure_delete),
+                                subtitle = stringResource(DesignSystemR.string.secure_delete_description),
+                                checked = state.settings.secureDeleteEnabled,
+                                enabled = true,
+                                onCheckedChange = { viewModel.toggleSecureDelete() },
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = fileSecCount) {
+                            SecurityStaticRow(Icons.Rounded.Verified, stringResource(DesignSystemR.string.checksum_verification), stringResource(DesignSystemR.string.checksum_description))
+                        }
+                        FolioSegmentedCard(index = 2, count = if (state.checksumResult != null) 4 else 3) {
+                            SecurityStaticRow(Icons.Rounded.EnhancedEncryption, stringResource(DesignSystemR.string.file_encryption), stringResource(DesignSystemR.string.file_encryption_description))
+                        }
+                        state.checksumResult?.let { hash ->
+                            FolioSegmentedCard(index = 3, count = 4) {
+                                Text(
+                                    text = hash,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Integrity Watch
+            item(key = "sec_integrity") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.integrity_watch))
+                    val rows = 1 + state.integrityEntries.size.coerceAtLeast(1)
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = rows) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.VerifiedUser, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(stringResource(DesignSystemR.string.integrity_watch_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { showIntegrityPathDialog = true }, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Rounded.Add, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(stringResource(DesignSystemR.string.add_path))
+                                    }
+                                    Button(
+                                        onClick = viewModel::scanIntegrityNow,
+                                        enabled = state.integrityEntries.isNotEmpty() && !state.isScanningIntegrity,
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text(if (state.isScanningIntegrity) stringResource(DesignSystemR.string.scanning) else stringResource(DesignSystemR.string.scan_now)) }
+                                }
+                            }
+                        }
+                        if (state.integrityEntries.isEmpty()) {
+                            FolioSegmentedCard(index = 1, count = rows) {
+                                Text(
+                                    text = stringResource(DesignSystemR.string.no_watched_paths),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(16.dp),
+                                )
                             }
                         } else {
-                            Button(
-                                onClick = {
-                                    authenticateVault(
-                                        title = context.getString(DesignSystemR.string.vault_unlock),
-                                        subtitle = context.getString(DesignSystemR.string.authenticate_to_view_protected_files),
-                                        onSuccess = viewModel::unlockVault,
-                                    )
-                                },
-                                enabled = !state.isVaultBusy && state.canUseBiometrics,
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.Filled.LockOpen, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(DesignSystemR.string.vault_unlock))
+                            state.integrityEntries.forEachIndexed { idx, entry ->
+                                FolioSegmentedCard(index = idx + 1, count = rows) {
+                                    ExpressiveIntegrityRow(entry = entry, onRemove = { viewModel.removeIntegrityPath(entry.path) })
+                                }
                             }
                         }
                     }
                 }
-                if (state.vaultUnlocked && state.vaultEntries.isEmpty()) {
-                    item {
-                        Text(
-                            stringResource(DesignSystemR.string.vault_empty),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-                if (state.vaultUnlocked) {
-                    items(state.vaultEntries, key = { it.id }) { entry ->
-                        ListItem(
-                            headlineContent = { Text(entry.displayName) },
-                            supportingContent = {
-                                Text(stringResource(DesignSystemR.string.vault_entry_size, entry.size))
-                            },
-                            leadingContent = { Icon(Icons.Filled.Lock, null) },
-                            trailingContent = {
+            }
+
+            // Encrypted Volumes
+            item(key = "sec_volumes") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.encrypted_volumes))
+                    val rows = 1 + state.encryptedMounts.size.coerceAtLeast(1)
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = rows) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(
-                                        onClick = { viewModel.restoreVaultEntry(entry) },
-                                        enabled = !state.isVaultBusy,
-                                    ) { Text(stringResource(DesignSystemR.string.vault_restore)) }
+                                    Icon(Icons.Rounded.EnhancedEncryption, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(stringResource(DesignSystemR.string.encrypted_volumes_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                                     IconButton(
-                                        onClick = { viewModel.deleteVaultEntry(entry) },
-                                        enabled = !state.isVaultBusy,
-                                    ) { Icon(Icons.Filled.DeleteForever, stringResource(DesignSystemR.string.vault_delete)) }
+                                        onClick = viewModel::refreshEncryptedVolumes,
+                                        enabled = !state.isLoadingEncryptedVolumes && !state.isMountingEncryptedVolume,
+                                    ) { Icon(Icons.Rounded.Refresh, stringResource(DesignSystemR.string.refresh)) }
                                 }
-                            },
+                                OutlinedButton(
+                                    onClick = viewModel::showEncryptedVolumeDialog,
+                                    enabled = state.encryptedFormats.isNotEmpty() && !state.isMountingEncryptedVolume,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(stringResource(DesignSystemR.string.mount_volume)) }
+                            }
+                        }
+                        if (state.encryptedMounts.isEmpty()) {
+                            FolioSegmentedCard(index = 1, count = rows) {
+                                Text(
+                                    text = when {
+                                        state.isLoadingEncryptedVolumes -> "Checking root environment..."
+                                        state.encryptedFormats.isEmpty() -> stringResource(DesignSystemR.string.encrypted_volumes_requirements)
+                                        else -> stringResource(DesignSystemR.string.no_encrypted_volumes_mounted)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
+                        } else {
+                            state.encryptedMounts.forEachIndexed { idx, mount ->
+                                FolioSegmentedCard(index = idx + 1, count = rows) {
+                                    ExpressiveMountRow(mount = mount, onUnmount = { viewModel.unmountEncryptedVolume(mount.mountPath) })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Security Model Info
+            item(key = "sec_about") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.about))
+                    val hwStatus = when (state.hardwareLevel) {
+                        KeyHardwareLevel.STRONGBOX -> stringResource(DesignSystemR.string.hardware_security_strongbox)
+                        KeyHardwareLevel.TEE -> stringResource(DesignSystemR.string.hardware_security_tee)
+                        KeyHardwareLevel.SOFTWARE -> stringResource(DesignSystemR.string.hardware_security_software)
+                    }
+                    FolioSegmentedCard(index = 0, count = 1) {
+                        SecurityStaticRow(
+                            icon = Icons.Rounded.Info,
+                            title = stringResource(DesignSystemR.string.security_model),
+                            subtitle = "$hwStatus\n\n" + stringResource(DesignSystemR.string.security_model_description) +
+                                " Secure delete uses DoD 5220.22-M 3-pass overwrite. Checksums computed using java.security.MessageDigest.",
                         )
                     }
                 }
             }
+        }
 
-            // Secure Delete
-            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item {
-                Text(stringResource(DesignSystemR.string.file_security).uppercase(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.secure_delete)) },
-                    supportingContent = { Text(stringResource(DesignSystemR.string.secure_delete_description)) },
-                    leadingContent = { Icon(Icons.Filled.DeleteForever, null) },
-                    trailingContent = { Switch(checked = state.settings.secureDeleteEnabled, onCheckedChange = { viewModel.toggleSecureDelete() }) },
-                )
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.checksum_verification)) },
-                    supportingContent = { Text(stringResource(DesignSystemR.string.checksum_description)) },
-                    leadingContent = { Icon(Icons.Filled.Verified, null) },
-                )
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.file_encryption)) },
-                    supportingContent = {
-                        Text(stringResource(DesignSystemR.string.file_encryption_description))
-                    },
-                    leadingContent = { Icon(Icons.Filled.EnhancedEncryption, null) },
-                )
-            }
-            if (state.checksumResult != null) {
-                item {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                    ) {
-                        Text(state.checksumResult!!, style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(12.dp))
-                    }
-                }
-            }
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        FolioBottomScrim(
+            height = 112.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.security),
+            onNavigateBack = onNavigateBack,
+            onFabClick = null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
 
-            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.integrity_watch)) },
-                    supportingContent = {
-                        Text(stringResource(DesignSystemR.string.integrity_watch_description))
-                    },
-                    leadingContent = { Icon(Icons.Filled.VerifiedUser, null) },
-                    trailingContent = {
-                        IconButton(onClick = { showIntegrityPathDialog = true }) {
-                            Icon(Icons.Filled.Add, stringResource(DesignSystemR.string.watch_path))
-                        }
-                    },
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedButton(
-                        onClick = { showIntegrityPathDialog = true },
-                        modifier = Modifier.weight(1f),
-                    ) { Text(stringResource(DesignSystemR.string.add_path)) }
-                    Button(
-                        onClick = viewModel::scanIntegrityNow,
-                        enabled = state.integrityEntries.isNotEmpty() && !state.isScanningIntegrity,
-                        modifier = Modifier.weight(1f),
-                    ) { Text(if (state.isScanningIntegrity) "Scanning..." else "Scan now") }
-                }
-            }
-            if (state.integrityEntries.isEmpty()) {
-                item {
-                    Text(
-                        "No watched paths. Add a path here or select files in the browser and choose Watch for changes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
-            } else {
-                items(state.integrityEntries, key = { it.path }) { entry ->
-                    IntegrityEntryRow(entry = entry, onRemove = { viewModel.removeIntegrityPath(entry.path) })
-                }
-            }
+@Composable
+private fun SecuritySwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
 
-            // Encrypted volumes
-            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item {
-                Text(stringResource(DesignSystemR.string.encrypted_volumes).uppercase(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.encrypted_volumes)) },
-                    supportingContent = {
-                        Text(stringResource(DesignSystemR.string.encrypted_volumes_description))
-                    },
-                    leadingContent = { Icon(Icons.Filled.EnhancedEncryption, null) },
-                    trailingContent = {
-                        IconButton(
-                            onClick = viewModel::refreshEncryptedVolumes,
-                            enabled = !state.isLoadingEncryptedVolumes && !state.isMountingEncryptedVolume,
-                        ) { Icon(Icons.Filled.Refresh, stringResource(DesignSystemR.string.refresh)) }
-                    },
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedButton(
-                        onClick = viewModel::showEncryptedVolumeDialog,
-                        enabled = state.encryptedFormats.isNotEmpty() && !state.isMountingEncryptedVolume,
-                        modifier = Modifier.weight(1f),
-                    ) { Text(stringResource(DesignSystemR.string.mount_volume)) }
-                }
-            }
-            if (state.isLoadingEncryptedVolumes) {
-                item {
-                    Text(
-                        "Checking root environment...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
-            } else if (state.encryptedFormats.isEmpty()) {
-                item {
-                    Text(
-                        "Root access and a compatible gocryptfs or EncFS binary with FUSE support are required.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
-            }
-            if (state.encryptedMounts.isEmpty()) {
-                item {
-                    Text(
-                        "No encrypted volumes mounted.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                }
-            } else {
-                items(state.encryptedMounts, key = { it.mountPath }) { mount ->
-                    EncryptedVolumeMountRow(
-                        mount = mount,
-                        onUnmount = { viewModel.unmountEncryptedVolume(mount.mountPath) },
-                    )
-                }
-            }
-
-            // Info
-            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-            item {
-                Text(stringResource(DesignSystemR.string.about).uppercase(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(DesignSystemR.string.security_model)) },
-                    supportingContent = {
-                        Text(stringResource(DesignSystemR.string.security_model_description) + " " +
-                                "Secure delete uses DoD 5220.22-M 3-pass overwrite. " +
-                                "Checksums computed using java.security.MessageDigest.")
-                    },
-                    leadingContent = { Icon(Icons.Filled.Info, null) },
-                )
-            }
-            item { Spacer(Modifier.height(32.dp)) }
+@Composable
+private fun SecurityStaticRow(icon: ImageVector, title: String, subtitle: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun EncryptedVolumeMountRow(mount: EncryptedVolumeMount, onUnmount: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(stringResource(DesignSystemR.string.volume_title, mount.format.label, mount.mountPath), maxLines = 1) },
-        supportingContent = {
+private fun ExpressiveIntegrityRow(entry: IntegrityEntryEntity, onRemove: () -> Unit) {
+    val statusColor = when (entry.status) {
+        IntegrityStatuses.OK -> MaterialTheme.colorScheme.primary
+        IntegrityStatuses.CHANGED, IntegrityStatuses.MISSING -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Fingerprint, null, tint = statusColor, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(entry.path, style = MaterialTheme.typography.titleSmall, maxLines = 1)
             Text(
-                stringResource(
+                text = buildString {
+                    append(entry.status)
+                    entry.lastCheckedAt?.let { append(" • checked ${java.util.Date(it)}") }
+                    entry.lastError?.let { append(" • $it") }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = statusColor,
+                maxLines = 2,
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Rounded.Close, stringResource(DesignSystemR.string.remove_watch))
+        }
+    }
+}
+
+@Composable
+private fun ExpressiveMountRow(mount: EncryptedVolumeMount, onUnmount: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(DesignSystemR.string.volume_title, mount.format.label, mount.mountPath), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text(
+                text = stringResource(
                     DesignSystemR.string.volume_details,
                     mount.cipherPath,
                     if (mount.readOnly) stringResource(DesignSystemR.string.read_only) else stringResource(DesignSystemR.string.read_write),
                 ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
+        }
+        IconButton(onClick = onUnmount) {
+            Icon(Icons.Rounded.Eject, stringResource(DesignSystemR.string.unmount_volume))
+        }
+    }
+}
+
+@Composable
+private fun ExpressiveIntegrityPathDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var path by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        title = { Text(stringResource(DesignSystemR.string.watch_path)) },
+        text = {
+            OutlinedTextField(
+                value = path,
+                onValueChange = { path = it },
+                label = { Text(stringResource(DesignSystemR.string.absolute_file_or_directory_path)) },
+                singleLine = true,
+            )
         },
-        leadingContent = { Icon(Icons.Filled.Lock, null) },
-        trailingContent = {
-            IconButton(onClick = onUnmount) { Icon(Icons.Filled.Eject, stringResource(DesignSystemR.string.unmount_volume)) }
-        },
+        confirmButton = { TextButton(onClick = { if (path.isNotBlank()) onConfirm(path.trim()) }) { Text(stringResource(DesignSystemR.string.watch)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(DesignSystemR.string.cancel)) } },
     )
 }
 
 @Composable
-private fun EncryptedVolumeDialog(
+private fun ExpressiveEncryptedVolumeDialog(
     formats: List<EncryptedVolumeFormat>,
     isMounting: Boolean,
     onConfirm: (EncryptedVolumeFormat, String, String, Boolean, CharArray) -> Unit,
@@ -1075,6 +1412,7 @@ private fun EncryptedVolumeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
         title = { Text(stringResource(DesignSystemR.string.mount_encrypted_volume)) },
         text = {
             Column(
@@ -1100,7 +1438,6 @@ private fun EncryptedVolumeDialog(
                     value = cipherPath,
                     onValueChange = { cipherPath = it },
                     label = { Text(stringResource(DesignSystemR.string.cipher_directory)) },
-                    supportingText = { Text(stringResource(DesignSystemR.string.cipher_directory_description)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1108,7 +1445,6 @@ private fun EncryptedVolumeDialog(
                     value = mountPath,
                     onValueChange = { mountPath = it },
                     label = { Text(stringResource(DesignSystemR.string.empty_mount_directory)) },
-                    supportingText = { Text(stringResource(DesignSystemR.string.empty_mount_directory_description)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1128,11 +1464,6 @@ private fun EncryptedVolumeDialog(
                     Text(stringResource(DesignSystemR.string.read_only_mount))
                     Switch(checked = readOnly, onCheckedChange = { readOnly = it })
                 }
-                Text(
-                    stringResource(DesignSystemR.string.encrypted_volume_mount_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         },
         confirmButton = {
@@ -1147,53 +1478,5 @@ private fun EncryptedVolumeDialog(
             ) { Text(if (isMounting) stringResource(DesignSystemR.string.mounting) else stringResource(DesignSystemR.string.mount_volume)) }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !isMounting) { Text(stringResource(DesignSystemR.string.cancel)) } },
-    )
-}
-
-@Composable
-private fun IntegrityEntryRow(entry: IntegrityEntryEntity, onRemove: () -> Unit) {
-    val statusColor = when (entry.status) {
-        IntegrityStatuses.OK -> MaterialTheme.colorScheme.primary
-        IntegrityStatuses.CHANGED, IntegrityStatuses.MISSING -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    ListItem(
-        headlineContent = { Text(entry.path, maxLines = 1) },
-        supportingContent = {
-            Text(
-                buildString {
-                    append(entry.status)
-                    entry.lastCheckedAt?.let { append(" · checked ${java.util.Date(it)}") }
-                    entry.lastError?.let { append(" · $it") }
-                },
-                color = statusColor,
-                maxLines = 2,
-            )
-        },
-        leadingContent = { Icon(Icons.Filled.Fingerprint, null, tint = statusColor) },
-        trailingContent = {
-            IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, stringResource(DesignSystemR.string.remove_watch)) }
-        },
-    )
-}
-
-@Composable
-private fun IntegrityPathDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var path by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(DesignSystemR.string.watch_path)) },
-        text = {
-            OutlinedTextField(
-                value = path,
-                onValueChange = { path = it },
-                label = { Text(stringResource(DesignSystemR.string.absolute_file_or_directory_path)) },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { if (path.isNotBlank()) onConfirm(path.trim()) }) { Text(stringResource(DesignSystemR.string.watch)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(DesignSystemR.string.cancel)) } },
     )
 }

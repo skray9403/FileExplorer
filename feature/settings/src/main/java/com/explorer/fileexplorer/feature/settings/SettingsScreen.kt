@@ -4,6 +4,7 @@ import android.widget.Toast
 import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,6 +39,35 @@ import com.explorer.fileexplorer.core.cloud.CloudAccountManager
 import com.explorer.fileexplorer.core.model.CapabilityStatus
 import com.explorer.fileexplorer.core.model.RepositoryCapabilityMatrix
 import com.explorer.fileexplorer.core.model.RepositoryFeature
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioAccentPalette
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Check
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Label
+import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.WifiTethering
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import com.explorer.fileexplorer.core.designsystem.ThemeMode
 import com.explorer.fileexplorer.plugin.PluginDescriptor
@@ -75,6 +106,9 @@ object SettingsKeys {
     val SHOW_DIRECTORY_SIZES = booleanPreferencesKey("show_directory_sizes")
     val SWIPE_LEFT_ACTION = stringPreferencesKey("swipe_left_action")
     val SWIPE_RIGHT_ACTION = stringPreferencesKey("swipe_right_action")
+    val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
+    val ACCENT_PALETTE = stringPreferencesKey("accent_palette")
+    val CORNER_STYLE = stringPreferencesKey("corner_style")
 }
 
 enum class ThumbnailCacheLocation(@androidx.annotation.StringRes val labelRes: Int, val key: String) {
@@ -139,12 +173,15 @@ data class SettingsState(
     val thumbnailSize: Int = 48,
     val thumbnailCacheSizeMb: Int = ThumbnailCacheSettings.DEFAULT_SIZE_MB,
     val thumbnailCacheLocation: ThumbnailCacheLocation = ThumbnailCacheLocation.INTERNAL,
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DYNAMIC,
     val trashTtlDays: Int = LocalTrashManager.DEFAULT_TTL_DAYS,
     val compactDensity: Boolean = false,
     val showDirectorySizes: Boolean = false,
     val swipeLeftAction: SwipeAction = SwipeAction.NONE,
     val swipeRightAction: SwipeAction = SwipeAction.NONE,
+    val useDynamicColor: Boolean = true,
+    val accentPalette: String = "SAGE",
+    val cornerStyle: String = "ROUNDED",
 )
 
 @Singleton
@@ -173,6 +210,9 @@ class SettingsRepository @Inject constructor(
             showDirectorySizes = prefs[SettingsKeys.SHOW_DIRECTORY_SIZES] ?: false,
             swipeLeftAction = SwipeAction.fromKey(prefs[SettingsKeys.SWIPE_LEFT_ACTION]),
             swipeRightAction = SwipeAction.fromKey(prefs[SettingsKeys.SWIPE_RIGHT_ACTION]),
+            useDynamicColor = prefs[SettingsKeys.USE_DYNAMIC_COLOR] ?: true,
+            accentPalette = prefs[SettingsKeys.ACCENT_PALETTE] ?: "SAGE",
+            cornerStyle = prefs[SettingsKeys.CORNER_STYLE] ?: "ROUNDED",
         )
     }
 
@@ -207,6 +247,9 @@ class SettingsRepository @Inject constructor(
                 showDirectorySizes = current.showDirectorySizes,
                 swipeLeftAction = current.swipeLeftAction.name,
                 swipeRightAction = current.swipeRightAction.name,
+                useDynamicColor = current.useDynamicColor,
+                accentPalette = current.accentPalette,
+                cornerStyle = current.cornerStyle,
             )
         },
     )
@@ -232,6 +275,9 @@ class SettingsRepository @Inject constructor(
                     preferences[SettingsKeys.SHOW_DIRECTORY_SIZES] = settings.showDirectorySizes
                     preferences[SettingsKeys.SWIPE_LEFT_ACTION] = settings.swipeLeftAction
                     preferences[SettingsKeys.SWIPE_RIGHT_ACTION] = settings.swipeRightAction
+                    preferences[SettingsKeys.USE_DYNAMIC_COLOR] = settings.useDynamicColor
+                    preferences[SettingsKeys.ACCENT_PALETTE] = settings.accentPalette
+                    preferences[SettingsKeys.CORNER_STYLE] = settings.cornerStyle
                 }
                 check(
                     ThumbnailCacheSettings.write(
@@ -258,6 +304,9 @@ class SettingsRepository @Inject constructor(
                         preferences[SettingsKeys.SHOW_DIRECTORY_SIZES] = previous.showDirectorySizes
                         preferences[SettingsKeys.SWIPE_LEFT_ACTION] = previous.swipeLeftAction
                         preferences[SettingsKeys.SWIPE_RIGHT_ACTION] = previous.swipeRightAction
+                        preferences[SettingsKeys.USE_DYNAMIC_COLOR] = previous.useDynamicColor
+                        preferences[SettingsKeys.ACCENT_PALETTE] = previous.accentPalette
+                        preferences[SettingsKeys.CORNER_STYLE] = previous.cornerStyle
                     }
                 }.onFailure(error::addSuppressed)
                 runCatching {
@@ -340,6 +389,9 @@ class SettingsViewModel @Inject constructor(
     fun toggleFoldersFirst() { viewModelScope.launch { repo.update(SettingsKeys.FOLDERS_FIRST, !state.value.foldersFirst) } }
     fun toggleConfirmDelete() { viewModelScope.launch { repo.update(SettingsKeys.CONFIRM_DELETE, !state.value.confirmDelete) } }
     fun setThemeMode(mode: ThemeMode) { viewModelScope.launch { repo.update(SettingsKeys.THEME_MODE, mode.name) } }
+    fun setUseDynamicColor(use: Boolean) { viewModelScope.launch { repo.update(SettingsKeys.USE_DYNAMIC_COLOR, use) } }
+    fun setAccentPalette(palette: String) { viewModelScope.launch { repo.update(SettingsKeys.ACCENT_PALETTE, palette) } }
+    fun setCornerStyle(style: String) { viewModelScope.launch { repo.update(SettingsKeys.CORNER_STYLE, style) } }
     fun setTrashTtlDays(days: Int) { viewModelScope.launch { repo.update(SettingsKeys.TRASH_TTL_DAYS, days) } }
     fun toggleCompactDensity() { viewModelScope.launch { repo.update(SettingsKeys.COMPACT_DENSITY, !state.value.compactDensity) } }
     fun toggleShowDirectorySizes() { viewModelScope.launch { repo.update(SettingsKeys.SHOW_DIRECTORY_SIZES, !state.value.showDirectorySizes) } }
@@ -437,10 +489,20 @@ class SettingsViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
+    onOpenTransfers: () -> Unit = {},
+    onOpenAnalyzer: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
+    onOpenApps: () -> Unit = {},
+    onOpenCloud: () -> Unit = {},
+    onOpenServer: () -> Unit = {},
+    onOpenTags: () -> Unit = {},
+    onOpenSecurity: () -> Unit = {},
+    onOpenShizuku: () -> Unit = {},
+    onOpenRootModules: () -> Unit = {},
+    onOpenNetwork: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -448,196 +510,315 @@ fun SettingsScreen(
     val capabilityMatrix by viewModel.capabilityMatrix.collectAsStateWithLifecycle()
     val importPreview by viewModel.importPreview.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
+    var showDiagnosticsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(appContext, it, Toast.LENGTH_SHORT).show() } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.settings)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back))
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .verticalScroll(rememberScrollState()),
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
+                start = 16.dp,
+                end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            // Theme section
-            Text(
-                text = stringResource(DesignSystemR.string.theme).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
 
-            ThemeSelector(
-                current = state.themeMode,
-                onSelect = viewModel::setThemeMode,
-            )
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            // Tools & Utilities section 1: Activity & Storage
+            item(key = "tools_storage_activity") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.activity_storage))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 4, onClick = onOpenTransfers) {
+                            SettingsToolsRow(Icons.Rounded.SwapHoriz, stringResource(DesignSystemR.string.transfer_queue), stringResource(DesignSystemR.string.storage_activity_desc))
+                        }
+                        FolioSegmentedCard(index = 1, count = 4, onClick = onOpenAnalyzer) {
+                            SettingsToolsRow(Icons.Rounded.PieChart, stringResource(DesignSystemR.string.storage_analyzer), stringResource(DesignSystemR.string.storage_analyzer_desc))
+                        }
+                        FolioSegmentedCard(index = 2, count = 4, onClick = onOpenTrash) {
+                            SettingsToolsRow(Icons.Rounded.DeleteOutline, stringResource(DesignSystemR.string.trash), stringResource(DesignSystemR.string.trash_desc))
+                        }
+                        FolioSegmentedCard(index = 3, count = 4, onClick = onOpenApps) {
+                            SettingsToolsRow(Icons.Rounded.Apps, stringResource(DesignSystemR.string.apps), stringResource(DesignSystemR.string.apps_desc))
+                        }
+                    }
+                }
+            }
+
+            // Tools & Utilities section 2: Remote & Organization
+            item(key = "tools_remote_organize") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.remote_organization))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 4, onClick = onOpenCloud) {
+                            SettingsToolsRow(Icons.Rounded.Cloud, stringResource(DesignSystemR.string.cloud), stringResource(DesignSystemR.string.cloud_desc))
+                        }
+                        FolioSegmentedCard(index = 1, count = 4, onClick = onOpenServer) {
+                            SettingsToolsRow(Icons.Rounded.WifiTethering, stringResource(DesignSystemR.string.share_server), stringResource(DesignSystemR.string.share_server_desc))
+                        }
+                        FolioSegmentedCard(index = 2, count = 4, onClick = onOpenTags) {
+                            SettingsToolsRow(Icons.Rounded.Label, stringResource(DesignSystemR.string.tags), stringResource(DesignSystemR.string.tags_desc))
+                        }
+                        FolioSegmentedCard(index = 3, count = 4, onClick = onOpenNetwork) {
+                            SettingsToolsRow(Icons.Rounded.Lan, stringResource(DesignSystemR.string.network), stringResource(DesignSystemR.string.network_desc))
+                        }
+                    }
+                }
+            }
+
+            // Tools & Utilities section 3: Security & System
+            item(key = "tools_security_system") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.security_system))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 3, onClick = onOpenSecurity) {
+                            SettingsToolsRow(Icons.Rounded.Security, stringResource(DesignSystemR.string.security), stringResource(DesignSystemR.string.security_desc))
+                        }
+                        FolioSegmentedCard(index = 1, count = 3, onClick = onOpenShizuku) {
+                            SettingsToolsRow(Icons.Rounded.AdminPanelSettings, stringResource(DesignSystemR.string.shizuku), stringResource(DesignSystemR.string.shizuku_desc))
+                        }
+                        FolioSegmentedCard(index = 2, count = 3, onClick = onOpenRootModules) {
+                            SettingsToolsRow(Icons.Rounded.Extension, stringResource(DesignSystemR.string.root_modules), stringResource(DesignSystemR.string.root_modules_desc))
+                        }
+                    }
+                }
+            }
+
+            // Appearance section
+            item(key = "appearance_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.appearance))
+                    AppearanceSection(
+                        themeMode = state.themeMode,
+                        useDynamicColor = state.useDynamicColor,
+                        accentPalette = state.accentPalette,
+                        cornerStyle = state.cornerStyle,
+                        onThemeModeSelect = viewModel::setThemeMode,
+                        onDynamicColorToggle = viewModel::setUseDynamicColor,
+                        onPaletteSelect = viewModel::setAccentPalette,
+                        onCornerStyleSelect = viewModel::setCornerStyle,
+                    )
+                }
+            }
 
             // Display section
-            Text(
-                text = stringResource(DesignSystemR.string.display).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            item(key = "display_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.display))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 4, onClick = viewModel::toggleShowHidden) {
+                            SettingsToggle(
+                                title = stringResource(DesignSystemR.string.show_hidden_files),
+                                subtitle = stringResource(DesignSystemR.string.display_dotfiles),
+                                checked = state.showHidden,
+                                onToggle = viewModel::toggleShowHidden,
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 4, onClick = viewModel::toggleFoldersFirst) {
+                            SettingsToggle(
+                                title = stringResource(DesignSystemR.string.folders_first),
+                                subtitle = stringResource(DesignSystemR.string.always_show_folders),
+                                checked = state.foldersFirst,
+                                onToggle = viewModel::toggleFoldersFirst,
+                            )
+                        }
+                        FolioSegmentedCard(index = 2, count = 4, onClick = viewModel::toggleCompactDensity) {
+                            SettingsToggle(
+                                title = stringResource(DesignSystemR.string.compact_density),
+                                subtitle = stringResource(DesignSystemR.string.reduce_spacing),
+                                checked = state.compactDensity,
+                                onToggle = viewModel::toggleCompactDensity,
+                            )
+                        }
+                        FolioSegmentedCard(index = 3, count = 4, onClick = viewModel::toggleShowDirectorySizes) {
+                            SettingsToggle(
+                                title = stringResource(DesignSystemR.string.show_directory_sizes),
+                                subtitle = stringResource(DesignSystemR.string.show_directory_sizes_description),
+                                checked = state.showDirectorySizes,
+                                onToggle = viewModel::toggleShowDirectorySizes,
+                            )
+                        }
+                    }
 
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.show_hidden_files),
-                subtitle = stringResource(DesignSystemR.string.display_dotfiles),
-                checked = state.showHidden,
-                onToggle = viewModel::toggleShowHidden,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.folders_first),
-                subtitle = stringResource(DesignSystemR.string.always_show_folders),
-                checked = state.foldersFirst,
-                onToggle = viewModel::toggleFoldersFirst,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.compact_density),
-                subtitle = stringResource(DesignSystemR.string.reduce_spacing),
-                checked = state.compactDensity,
-                onToggle = viewModel::toggleCompactDensity,
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.show_directory_sizes),
-                subtitle = stringResource(DesignSystemR.string.show_directory_sizes_description),
-                checked = state.showDirectorySizes,
-                onToggle = viewModel::toggleShowDirectorySizes,
-            )
-
-            ThumbnailCacheSettingsPanel(
-                state = state,
-                onSizeChange = viewModel::setThumbnailCacheSize,
-                onLocationChange = viewModel::setThumbnailCacheLocation,
-                onPurge = viewModel::purgeThumbnailCache,
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // Behavior section
-            Text(
-                text = stringResource(DesignSystemR.string.behavior).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-
-            SettingsToggle(
-                title = stringResource(DesignSystemR.string.confirm_delete),
-                subtitle = stringResource(DesignSystemR.string.confirm_before_delete),
-                checked = state.confirmDelete,
-                onToggle = viewModel::toggleConfirmDelete,
-            )
-
-            TrashTtlSelector(
-                currentDays = state.trashTtlDays,
-                onSelect = viewModel::setTrashTtlDays,
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            Text(
-                text = stringResource(DesignSystemR.string.gestures).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-
-            SwipeActionSelector(
-                title = stringResource(DesignSystemR.string.swipe_left),
-                current = state.swipeLeftAction,
-                onSelect = viewModel::setSwipeLeftAction,
-            )
-            SwipeActionSelector(
-                title = stringResource(DesignSystemR.string.swipe_right),
-                current = state.swipeRightAction,
-                onSelect = viewModel::setSwipeRightAction,
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // Backup
-            Text(
-                text = stringResource(DesignSystemR.string.backup).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-
-            val cr = appContext.contentResolver
-            val exportLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.CreateDocument("application/json"),
-            ) { uri ->
-                uri?.let { cr.openOutputStream(it)?.let(viewModel::exportBackup) }
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 1) {
+                            ThumbnailCacheSettingsPanel(
+                                state = state,
+                                onSizeChange = viewModel::setThumbnailCacheSize,
+                                onLocationChange = viewModel::setThumbnailCacheLocation,
+                                onPurge = viewModel::purgeThumbnailCache,
+                            )
+                        }
+                    }
+                }
             }
 
-            val importLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.OpenDocument(),
-            ) { uri ->
-                uri?.let { cr.openInputStream(it)?.let(viewModel::previewBackup) }
+            // Behavior section (Confirm delete + Trash auto-purge wrapped in one FolioSegmentedColumn)
+            item(key = "behavior_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.behavior))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 2, onClick = viewModel::toggleConfirmDelete) {
+                            SettingsToggle(
+                                title = stringResource(DesignSystemR.string.confirm_delete),
+                                subtitle = stringResource(DesignSystemR.string.confirm_before_delete),
+                                checked = state.confirmDelete,
+                                onToggle = viewModel::toggleConfirmDelete,
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 2) {
+                            TrashTtlSelector(
+                                currentDays = state.trashTtlDays,
+                                onSelect = viewModel::setTrashTtlDays,
+                            )
+                        }
+                    }
+                }
             }
 
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.export_bookmarks)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.save_bookmarks_settings)) },
-                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
-                modifier = Modifier.clickable { exportLauncher.launch("fileexplorer-backup.json") },
-            )
+            // Gestures section
+            item(key = "gestures_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.gestures))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 2) {
+                            SwipeActionSelector(
+                                title = stringResource(DesignSystemR.string.swipe_left),
+                                current = state.swipeLeftAction,
+                                onSelect = viewModel::setSwipeLeftAction,
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 2) {
+                            SwipeActionSelector(
+                                title = stringResource(DesignSystemR.string.swipe_right),
+                                current = state.swipeRightAction,
+                                onSelect = viewModel::setSwipeRightAction,
+                            )
+                        }
+                    }
+                }
+            }
 
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.import_bookmarks)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.restore_backup)) },
-                leadingContent = { Icon(Icons.Filled.FileDownload, null) },
-                modifier = Modifier.clickable { importLauncher.launch(arrayOf("application/json")) },
-            )
+            // Backup & About
+            item(key = "backup_about_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FolioSectionLabel(stringResource(DesignSystemR.string.backup))
 
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.export_diagnostic_log)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.share_error_logs)) },
-                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
-                modifier = Modifier.clickable { viewModel.shareDiagnosticLog(appContext) },
-            )
+                    val cr = appContext.contentResolver
+                    val exportLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.CreateDocument("application/json"),
+                    ) { uri ->
+                        uri?.let { cr.openOutputStream(it)?.let(viewModel::exportBackup) }
+                    }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    val importLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.OpenDocument(),
+                    ) { uri ->
+                        uri?.let { cr.openInputStream(it)?.let(viewModel::previewBackup) }
+                    }
 
-            PluginSettingsPanel(
-                plugins = plugins,
-                onApprovalChanged = viewModel::setPluginApproval,
-            )
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 4, onClick = { exportLauncher.launch("fileexplorer-backup.json") }) {
+                            ListItem(
+                                headlineContent = { Text(stringResource(DesignSystemR.string.export_bookmarks)) },
+                                supportingContent = { Text(stringResource(DesignSystemR.string.save_bookmarks_settings)) },
+                                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                        FolioSegmentedCard(index = 1, count = 4, onClick = { importLauncher.launch(arrayOf("application/json")) }) {
+                            ListItem(
+                                headlineContent = { Text(stringResource(DesignSystemR.string.import_bookmarks)) },
+                                supportingContent = { Text(stringResource(DesignSystemR.string.restore_backup)) },
+                                leadingContent = { Icon(Icons.Filled.FileDownload, null) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                        FolioSegmentedCard(index = 2, count = 4, onClick = { viewModel.shareDiagnosticLog(appContext) }) {
+                            ListItem(
+                                headlineContent = { Text(stringResource(DesignSystemR.string.export_diagnostic_log)) },
+                                supportingContent = { Text(stringResource(DesignSystemR.string.share_error_logs)) },
+                                leadingContent = { Icon(Icons.Filled.FileUpload, null) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                        FolioSegmentedCard(index = 3, count = 4, onClick = { showDiagnosticsDialog = true }) {
+                            ListItem(
+                                headlineContent = { Text(stringResource(DesignSystemR.string.advanced_diagnostics)) },
+                                supportingContent = { Text(stringResource(DesignSystemR.string.advanced_diagnostics_desc)) },
+                                leadingContent = { Icon(Icons.Rounded.AdminPanelSettings, null) },
+                                trailingContent = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                    }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            CapabilityMatrixPanel(rows = capabilityMatrix)
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // About
-            Text(
-                text = stringResource(DesignSystemR.string.about).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-
-            ListItem(
-                headlineContent = { Text(stringResource(DesignSystemR.string.version)) },
-                supportingContent = { Text(stringResource(DesignSystemR.string.version_value)) },
-            )
+                    Spacer(Modifier.height(8.dp))
+                    FolioSectionLabel(stringResource(DesignSystemR.string.about))
+                    FolioSegmentedColumn {
+                        FolioSegmentedCard(index = 0, count = 1) {
+                            ListItem(
+                                headlineContent = { Text(stringResource(DesignSystemR.string.version)) },
+                                supportingContent = { Text(stringResource(DesignSystemR.string.version_value)) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                    }
+                }
+            }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.tools_and_settings),
+            onNavigateBack = onNavigateBack,
+            onFabClick = null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+
+    if (showDiagnosticsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiagnosticsDialog = false },
+            title = { Text(stringResource(DesignSystemR.string.advanced_diagnostics)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CapabilityMatrixPanel(rows = capabilityMatrix)
+                    PluginSettingsPanel(
+                        plugins = plugins,
+                        onApprovalChanged = viewModel::setPluginApproval,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDiagnosticsDialog = false }) {
+                    Text(stringResource(DesignSystemR.string.done))
+                }
+            },
+        )
     }
 
     importPreview?.let { preview ->
@@ -666,6 +847,41 @@ fun SettingsScreen(
                     Text(stringResource(DesignSystemR.string.cancel))
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun SettingsToolsRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -846,6 +1062,7 @@ private fun SettingsToggle(
         trailingContent = {
             Switch(checked = checked, onCheckedChange = { onToggle() })
         },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
 
@@ -858,6 +1075,7 @@ private fun SwipeActionSelector(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(stringResource(current.descriptionRes)) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
     FlowRow(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
@@ -884,6 +1102,7 @@ private fun TrashTtlSelector(
     ListItem(
         headlineContent = { Text(stringResource(DesignSystemR.string.trash_auto_purge)) },
         supportingContent = { Text(stringResource(DesignSystemR.string.delete_trash_after_days, currentDays)) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
     FlowRow(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
@@ -900,31 +1119,139 @@ private fun TrashTtlSelector(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ThemeSelector(
-    current: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
+private fun AppearanceSection(
+    themeMode: ThemeMode,
+    useDynamicColor: Boolean,
+    accentPalette: String,
+    cornerStyle: String,
+    onThemeModeSelect: (ThemeMode) -> Unit,
+    onDynamicColorToggle: (Boolean) -> Unit,
+    onPaletteSelect: (String) -> Unit,
+    onCornerStyleSelect: (String) -> Unit,
 ) {
-    val options = listOf(
-        ThemeMode.SYSTEM to (stringResource(DesignSystemR.string.system_default) to stringResource(DesignSystemR.string.follow_device_theme)),
-        ThemeMode.LIGHT to (stringResource(DesignSystemR.string.light) to stringResource(DesignSystemR.string.standard_light_surfaces)),
-        ThemeMode.DARK to (stringResource(DesignSystemR.string.dark) to stringResource(DesignSystemR.string.deep_dark_surfaces)),
-        ThemeMode.OLED to (stringResource(DesignSystemR.string.oled_true_black) to stringResource(DesignSystemR.string.pure_black_background)),
-        ThemeMode.DYNAMIC to (stringResource(DesignSystemR.string.material_you) to stringResource(DesignSystemR.string.wallpaper_colors)),
-    )
-    Column {
-        options.forEach { (mode, labels) ->
-            val (title, subtitle) = labels
-            ListItem(
-                headlineContent = { Text(title) },
-                supportingContent = { Text(subtitle) },
-                trailingContent = {
-                    RadioButton(
-                        selected = current == mode,
-                        onClick = { onSelect(mode) },
+    val supportsDynamic = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    val cardCount = if (supportsDynamic) 4 else 3
+
+    FolioSegmentedColumn {
+        // Card 0: 4-way Theme Mode: System | Light | Dark | OLED
+        FolioSegmentedCard(index = 0, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.theme),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val modes = listOf(
+                        ThemeMode.SYSTEM to DesignSystemR.string.system_default,
+                        ThemeMode.LIGHT to DesignSystemR.string.light,
+                        ThemeMode.DARK to DesignSystemR.string.dark,
+                        ThemeMode.OLED to DesignSystemR.string.oled_true_black,
                     )
-                },
-            )
+                    modes.forEach { (mode, labelRes) ->
+                        FilterChip(
+                            selected = themeMode == mode,
+                            onClick = { onThemeModeSelect(mode) },
+                            label = { Text(stringResource(labelRes)) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Card 1: Material You Dynamic Color Switch (Android 12+)
+        if (supportsDynamic) {
+            FolioSegmentedCard(index = 1, count = cardCount, onClick = { onDynamicColorToggle(!useDynamicColor) }) {
+                ListItem(
+                    headlineContent = { Text(stringResource(DesignSystemR.string.dynamic_color_title)) },
+                    supportingContent = { Text(stringResource(DesignSystemR.string.dynamic_color_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = useDynamicColor,
+                            onCheckedChange = { onDynamicColorToggle(it) },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+        }
+
+        // Card 2: 4 circular tonal swatch buttons (Sage, Ocean, Violet, Terracotta)
+        val paletteCardIndex = if (supportsDynamic) 2 else 1
+        FolioSegmentedCard(index = paletteCardIndex, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.accent_palette),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                ) {
+                    val palettes = listOf(
+                        FolioAccentPalette.SAGE to ("SAGE" to DesignSystemR.string.palette_sage),
+                        FolioAccentPalette.OCEAN to ("OCEAN" to DesignSystemR.string.palette_ocean),
+                        FolioAccentPalette.VIOLET to ("VIOLET" to DesignSystemR.string.palette_violet),
+                        FolioAccentPalette.TERRACOTTA to ("TERRACOTTA" to DesignSystemR.string.palette_terracotta),
+                    )
+                    palettes.forEach { (pal, info) ->
+                        val (key, labelRes) = info
+                        val isSelected = accentPalette.equals(key, ignoreCase = true)
+                        val swatchColor = com.explorer.fileexplorer.core.designsystem.paletteSwatchColor(pal)
+                        Surface(
+                            onClick = { onPaletteSelect(key) },
+                            shape = CircleShape,
+                            color = swatchColor,
+                            border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface) else null,
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            if (isSelected) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = stringResource(labelRes),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card 3: Corner Shape: Compact | Rounded | Expressive
+        val cornerCardIndex = if (supportsDynamic) 3 else 2
+        FolioSegmentedCard(index = cornerCardIndex, count = cardCount) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(DesignSystemR.string.corner_style),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val corners = listOf(
+                        "SQUARE" to DesignSystemR.string.corner_square,
+                        "ROUNDED" to DesignSystemR.string.corner_rounded,
+                        "EXTRA" to DesignSystemR.string.corner_extra,
+                    )
+                    corners.forEach { (style, labelRes) ->
+                        FilterChip(
+                            selected = cornerStyle.equals(style, ignoreCase = true),
+                            onClick = { onCornerStyleSelect(style) },
+                            label = { Text(stringResource(labelRes)) },
+                        )
+                    }
+                }
+            }
         }
     }
 }

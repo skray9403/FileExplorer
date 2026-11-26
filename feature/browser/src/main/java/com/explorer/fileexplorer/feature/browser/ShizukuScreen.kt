@@ -1,5 +1,17 @@
 package com.explorer.fileexplorer.feature.browser
 
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,9 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -69,20 +79,20 @@ fun ShizukuScreen(
         ShizukuAvailability.READY -> stringResource(DesignSystemR.string.shizuku_ready_description)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.shizuku_access)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
@@ -141,7 +151,22 @@ fun ShizukuScreen(
                     )
                 }
             }
-            item { Spacer(Modifier.height(24.dp)) }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.shizuku_access),
+            onNavigateBack = onNavigateBack,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }

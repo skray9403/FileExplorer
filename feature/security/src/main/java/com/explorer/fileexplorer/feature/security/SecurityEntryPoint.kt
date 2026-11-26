@@ -8,4 +8,5 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 interface SecurityEntryPoint {
     fun biometricHelper(): BiometricHelper
+    fun securityRepository(): SecurityRepository
 }

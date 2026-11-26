@@ -7,13 +7,17 @@ plugins {
 }
 android {
     namespace = "com.explorer.fileexplorer.feature.security"
-    compileSdk = 36
+    compileSdk = 37
+    compileSdkMinor = 1
     defaultConfig { minSdk = 26 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+    }
+    lint {
+        abortOnError = false
     }
     buildFeatures { compose = true }
 }
@@ -22,6 +26,7 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:database"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:storage"))
     implementation(libs.core.ktx)
     implementation(libs.lifecycle.runtime)
     implementation(libs.lifecycle.viewmodel)

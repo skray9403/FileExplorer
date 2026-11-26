@@ -1,6 +1,15 @@
 package com.explorer.fileexplorer.feature.transfer
 
-import androidx.activity.compose.BackHandler
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.background
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,13 +41,12 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,7 +83,7 @@ class TransferQueueViewModel @Inject constructor(
     fun clearFinished() = manager.clearFinished()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TransferQueueScreen(
     onNavigateBack: () -> Unit = {},
@@ -85,36 +93,31 @@ fun TransferQueueScreen(
     var bandwidthTask by remember { mutableStateOf<TransferQueueTask?>(null) }
     val conflictTask = tasks.firstOrNull { it.state == TransferQueueState.WAITING_CONFLICT && it.conflict != null }
 
-    BackHandler(onBack = onNavigateBack)
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.transfer_queue)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = viewModel::clearFinished,
-                        enabled = tasks.any { it.isTerminal },
-                    ) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = stringResource(DesignSystemR.string.clear))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         if (tasks.isEmpty()) {
             Box(
-                modifier = Modifier.padding(padding).fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = statusBarTop, bottom = FolioSubScreenBarDefaults.BottomBarHeight + navBarBottom),
                 contentAlignment = Alignment.Center,
             ) { Text(stringResource(DesignSystemR.string.no_transfers_queued), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
             LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    top = statusBarTop + 16.dp,
+                    bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+                    start = 16.dp,
+                    end = 16.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(tasks, key = { it.id }) { task ->
@@ -133,6 +136,25 @@ fun TransferQueueScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.transfer_queue),
+            onNavigateBack = onNavigateBack,
+            fabIcon = if (tasks.any { it.isTerminal }) Icons.Filled.DeleteSweep else null,
+            fabContentDescription = stringResource(DesignSystemR.string.clear),
+            onFabClick = if (tasks.any { it.isTerminal }) viewModel::clearFinished else null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     bandwidthTask?.let { task ->
@@ -184,7 +206,7 @@ private fun TransferQueueTaskCard(
                 overflow = TextOverflow.Ellipsis,
             )
             if (task.totalBytes > 0) {
-                LinearProgressIndicator(progress = { task.progress }, modifier = Modifier.fillMaxWidth())
+                LinearWavyProgressIndicator(progress = { task.progress }, modifier = Modifier.fillMaxWidth())
                 Text(
                     "${formatBytes(task.transferredBytes)} / ${formatBytes(task.totalBytes)} · " +
                         stringResource(DesignSystemR.string.transfer_complete_count, task.completedSources, task.sourcePaths.size),

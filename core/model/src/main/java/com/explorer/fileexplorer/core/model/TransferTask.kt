@@ -38,6 +38,20 @@ data class ClipboardContent(
     val isCut: Boolean get() = operation == FileOperation.MOVE
 }
 
+data class QueuedClipboardTask(
+    val id: Long,
+    val operation: FileOperation,
+    val items: List<FileItem>,
+    val sourcePath: String,
+    val archivePath: String? = null,
+    val archiveEntries: List<String>? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+) {
+    val isCut: Boolean get() = operation == FileOperation.MOVE
+    val isExtract: Boolean get() = operation == FileOperation.EXTRACT
+    val itemCount: Int get() = items.size
+}
+
 enum class ConflictResolution {
     OVERWRITE, SKIP, RENAME, ASK
 }

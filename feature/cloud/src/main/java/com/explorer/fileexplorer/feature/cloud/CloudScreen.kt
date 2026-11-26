@@ -1,5 +1,15 @@
 package com.explorer.fileexplorer.feature.cloud
 
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.background
+
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
@@ -235,7 +245,7 @@ class CloudViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CloudScreen(
     viewModel: CloudViewModel = hiltViewModel(),
@@ -277,29 +287,32 @@ fun CloudScreen(
         return
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.cloud_storage)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } },
-                actions = { IconButton(onClick = viewModel::showAddDialog) { Icon(Icons.Filled.Add, stringResource(DesignSystemR.string.add_account)) } },
-            )
-        },
-    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (state.accounts.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CloudQueue, null, Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f))
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(DesignSystemR.string.no_cloud_accounts), style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    FilledTonalButton(onClick = viewModel::showAddDialog) { Text(stringResource(DesignSystemR.string.add_account)) }
-                }
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(Icons.Filled.CloudQueue, null, Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f))
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(DesignSystemR.string.no_cloud_accounts), style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                FilledTonalButton(onClick = viewModel::showAddDialog) { Text(stringResource(DesignSystemR.string.add_account)) }
             }
         } else {
-            LazyColumn(Modifier.padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                    bottom = FolioSubScreenBarDefaults.BottomBarHeight + 48.dp,
+                ),
+            ) {
+                item(key = "cloud_headline") {
+                    FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.cloud_storage))
+                }
                 items(state.accounts, key = { it.id }) { account ->
                     CloudAccountItem(
                         account = account,
@@ -310,6 +323,19 @@ fun CloudScreen(
                 }
             }
         }
+        FolioTopScrim(
+            height = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        FolioBottomScrim(height = 112.dp, modifier = Modifier.align(Alignment.BottomCenter))
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.cloud_storage),
+            onNavigateBack = onNavigateBack,
+            fabIcon = Icons.Filled.Add,
+            fabContentDescription = stringResource(DesignSystemR.string.add_account),
+            onFabClick = viewModel::showAddDialog,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     if (state.showAddDialog) {
@@ -423,7 +449,7 @@ private fun CloudAccountItem(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun CloudBrowserScreen(
     account: CloudAccount,
@@ -437,38 +463,50 @@ private fun CloudBrowserScreen(
 ) {
     var showNewFolder by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(account.displayName.ifEmpty { account.service.displayName },
-                            maxLines = 1, style = MaterialTheme.typography.titleMedium)
-                        Text(account.email, maxLines = 1, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                bottom = FolioSubScreenBarDefaults.BottomBarHeight + 48.dp,
+            ),
+        ) {
+            if (folderDepth > 0) {
+                item(key = "cloud_browser_up") {
+                    TextButton(onClick = onNavigateUp) {
+                        Icon(Icons.Filled.ArrowUpward, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(DesignSystemR.string.parent_folder))
                     }
-                },
-                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } },
-                actions = {
-                    if (folderDepth > 0) { IconButton(onClick = onNavigateUp) { Icon(Icons.Filled.ArrowUpward, stringResource(DesignSystemR.string.back)) } }
-                    IconButton(onClick = { showNewFolder = true }) { Icon(Icons.Filled.CreateNewFolder, stringResource(DesignSystemR.string.new_folder)) }
-                },
-            )
-        },
-    ) { padding ->
-        if (isLoading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else if (files.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(DesignSystemR.string.empty_directory), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-        } else {
-            LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-                items(files, key = { it.path }) { item ->
+            when {
+                isLoading -> item(key = "cloud_loading") {
+                    Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                }
+                files.isEmpty() -> item(key = "cloud_empty") {
+                    Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                        Text(stringResource(DesignSystemR.string.empty_directory), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                else -> items(files, key = { it.path }) { item ->
                     FileListItem(item = item, onClick = { onItemClick(item) }, onLongClick = {})
                 }
             }
         }
+        FolioTopScrim(
+            height = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        FolioBottomScrim(height = 112.dp, modifier = Modifier.align(Alignment.BottomCenter))
+        FolioSubScreenBottomBar(
+            title = account.displayName.ifEmpty { account.service.displayName },
+            onNavigateBack = onClose,
+            fabIcon = Icons.Filled.CreateNewFolder,
+            fabContentDescription = stringResource(DesignSystemR.string.new_folder),
+            onFabClick = { showNewFolder = true },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     if (showNewFolder) {

@@ -1,5 +1,17 @@
 package com.explorer.fileexplorer.feature.search
 
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -99,22 +109,18 @@ fun TagsScreen(
         viewModel.messages.collect { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.tags)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .padding(top = statusBarTop, bottom = FolioSubScreenBarDefaults.BottomBarInset + navBarBottom),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -170,5 +176,25 @@ fun TagsScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
+        )
+
+        FolioBottomScrim(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.tags),
+            onNavigateBack = onNavigateBack,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = FolioSubScreenBarDefaults.BottomBarInset + navBarBottom),
+        )
     }
 }

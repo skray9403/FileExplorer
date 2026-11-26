@@ -1,5 +1,15 @@
 package com.explorer.fileexplorer.feature.browser
 
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+
 import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -151,34 +161,23 @@ fun StorageAnalyzerScreen(
         nodeStack = nodeStack.dropLast(1)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.storage_analyzer)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(DesignSystemR.string.back))
-                    }
-                },
-                actions = {
-                    if (state.isScanning) {
-                        IconButton(onClick = viewModel::cancelScan) {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(DesignSystemR.string.cancel_scan))
-                        }
-                    } else {
-                        IconButton(onClick = viewModel::scan) {
-                            Icon(Icons.Filled.Refresh, contentDescription = stringResource(DesignSystemR.string.rescan_storage))
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(
+                    top = statusBarTop + 16.dp,
+                    bottom = FolioSubScreenBarDefaults.BottomBarHeight + 24.dp + navBarBottom,
+                    start = 16.dp,
+                    end = 16.dp,
+                ),
         ) {
             if (state.isScanning) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -291,6 +290,25 @@ fun StorageAnalyzerScreen(
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.storage_analyzer),
+            onNavigateBack = onNavigateBack,
+            fabIcon = if (state.isScanning) Icons.Filled.Close else Icons.Filled.Refresh,
+            fabContentDescription = stringResource(if (state.isScanning) DesignSystemR.string.cancel_scan else DesignSystemR.string.rescan_storage),
+            onFabClick = if (state.isScanning) { { viewModel.cancelScan() } } else { { viewModel.scan() } },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 

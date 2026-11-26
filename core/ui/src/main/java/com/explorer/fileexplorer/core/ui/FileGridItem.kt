@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -119,7 +120,8 @@ fun FileGridItem(
 
 @Composable
 private fun formatGridDate(millis: Long): String {
-    val diff = System.currentTimeMillis() - millis
+    val now = remember { System.currentTimeMillis() }
+    val diff = now - millis
     return when {
         diff < 60_000 -> stringResource(DesignSystemR.string.just_now)
         diff < 3_600_000 -> pluralStringResource(

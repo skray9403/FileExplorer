@@ -3,6 +3,8 @@ package com.explorer.fileexplorer.feature.transfer
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import com.explorer.fileexplorer.core.data.ArchiveFormat
+import com.explorer.fileexplorer.core.data.ArchiveHelper
 import com.explorer.fileexplorer.core.data.FileRepository
 import com.explorer.fileexplorer.core.data.FileRepositoryFactory
 import com.explorer.fileexplorer.core.data.UsbPathCodec
@@ -17,19 +19,24 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,7 +46,21 @@ class TransferQueueManager @Inject constructor(
     @param:ApplicationContext private val appContext: Context,
     private val repositoryFactory: FileRepositoryFactory,
     private val transferTaskDao: TransferTaskDao,
+    private val archiveHelper: ArchiveHelper,
 ) {
+    private data class ArchiveTaskOptions(
+        val format: ArchiveFormat = ArchiveFormat.ZIP,
+        val entriesToExtract: List<String>? = null,
+        val password: CharArray? = null,
+    ) {
+        fun wipeSecrets() {
+            password?.fill('\u0000')
+        }
+    }
+
+    private val _completedDestinations = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val completedDestinations: SharedFlow<String> = _completedDestinations.asSharedFlow()
+    private val archiveOptions = ConcurrentHashMap<Long, ArchiveTaskOptions>()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val nextId = AtomicLong(System.currentTimeMillis())
@@ -86,10 +107,67 @@ class TransferQueueManager @Inject constructor(
         return id
     }
 
+    fun enqueueExtract(
+        archivePath: String,
+        destination: String,
+        entriesToExtract: List<String>? = null,
+        password: CharArray? = null,
+    ): Long {
+        val id = nextId.incrementAndGet()
+        archiveOptions[id] = ArchiveTaskOptions(
+            entriesToExtract = entriesToExtract,
+            password = password?.copyOf(),
+        )
+        password?.fill('\u0000')
+        val task = TransferQueueTask(
+            id = id,
+            idempotencyKey = "transfer-$id",
+            operation = FileOperation.EXTRACT,
+            sourcePaths = listOf(archivePath),
+            destination = destination,
+        )
+        _tasks.update { it + task }
+        persistTask(task, force = true)
+        startRunner()
+        return id
+    }
+
+    fun enqueueCompress(
+        sourcePaths: List<String>,
+        outputPath: String,
+        format: ArchiveFormat = ArchiveFormat.ZIP,
+        password: CharArray? = null,
+    ): Long {
+        require(sourcePaths.isNotEmpty()) { "At least one source is required" }
+        val id = nextId.incrementAndGet()
+        archiveOptions[id] = ArchiveTaskOptions(
+            format = format,
+            password = password?.copyOf(),
+        )
+        password?.fill('\u0000')
+        val task = TransferQueueTask(
+            id = id,
+            idempotencyKey = "transfer-$id",
+            operation = FileOperation.COMPRESS,
+            sourcePaths = sourcePaths.distinct(),
+            destination = outputPath,
+        )
+        _tasks.update { it + task }
+        persistTask(task, force = true)
+        startRunner()
+        return id
+    }
+
     fun pause(id: Long) {
         val task = tasks.value.firstOrNull { it.id == id } ?: return
         if (task.state !in setOf(TransferQueueState.QUEUED, TransferQueueState.RUNNING)) return
-        updateTask(id) { it.copy(state = TransferQueueState.PAUSED) }
+        updateTask(id) {
+            it.copy(
+                state = TransferQueueState.PAUSED,
+                speedBytesPerSec = 0L,
+                etaSeconds = null,
+            )
+        }
     }
 
     fun resume(id: Long) {
@@ -124,7 +202,15 @@ class TransferQueueManager @Inject constructor(
             pauseSignals.remove(id)?.complete(Unit)
             activeId == id
         }
-        updateTask(id) { it.copy(state = TransferQueueState.CANCELLED, conflict = null) }
+        updateTask(id) {
+            it.copy(
+                state = TransferQueueState.CANCELLED,
+                conflict = null,
+                speedBytesPerSec = 0L,
+                etaSeconds = null,
+            )
+        }
+        archiveOptions.remove(id)?.wipeSecrets()
         if (!wasActive) synchronized(lock) { cancelledIds.remove(id) }
         startRunner()
     }
@@ -167,10 +253,13 @@ class TransferQueueManager @Inject constructor(
     fun clearFinished() {
         val removedIds = tasks.value.filter { it.isTerminal }.map { it.id }
         _tasks.update { list -> list.filterNot { it.isTerminal } }
+        removedIds.forEach { archiveOptions.remove(it)?.wipeSecrets() }
         deletePersisted(removedIds)
     }
 
     fun shutdown() {
+        archiveOptions.values.forEach { it.wipeSecrets() }
+        archiveOptions.clear()
         persistAllTasks(force = true)
         scope.coroutineContext[Job]?.cancel()
     }
@@ -297,6 +386,13 @@ class TransferQueueManager @Inject constructor(
             }
         }
         if (!started) return
+        val speedTracker = TransferSpeedTracker()
+
+        if (initial.operation == FileOperation.EXTRACT || initial.operation == FileOperation.COMPRESS) {
+            executeArchiveTask(initial, speedTracker)
+            return
+        }
+
         var transferredBefore = initial.transferredBytes.coerceAtLeast(0L)
         var sharedAction = initial.conflictAction
 
@@ -341,7 +437,7 @@ class TransferQueueManager @Inject constructor(
                 val conflict = if (targetExists) {
                     buildConflict(repository, source, target, sourceSize, task.idempotencyKey)
                 } else null
-                if (targetExists && matchesDelivery(repository, source, target, task.operation)) {
+                if (targetExists && matchesDelivery(repository, source, target, task.operation, initial.retryCount > 0)) {
                     transferredBefore += sourceSize
                     updateTask(taskId) {
                         it.copy(
@@ -378,7 +474,7 @@ class TransferQueueManager @Inject constructor(
                     null
                 }
                 if (action == TransferConflictAction.KEEP_BOTH && conflict != null &&
-                    alreadyDelivered(repository, conflict, task.operation)
+                    alreadyDelivered(repository, conflict, task.operation, initial.retryCount > 0)
                 ) {
                     transferredBefore += sourceSize
                     updateTask(taskId) {
@@ -408,12 +504,18 @@ class TransferQueueManager @Inject constructor(
                     ) { copied, _, file ->
                         ensureNotCancelled(taskId)
                         limiter.throttle(copied)
-                        updateTask(taskId) {
-                            it.copy(
-                                transferredBytes = transferredBefore + copied,
-                                currentFile = file,
-                                state = if (it.state == TransferQueueState.PAUSED) TransferQueueState.PAUSED else TransferQueueState.RUNNING,
-                            )
+                        val absoluteBytes = transferredBefore + copied
+                        val sample = speedTracker.sample(absoluteBytes, totalBytes)
+                        if (sample != null) {
+                            updateTask(taskId) {
+                                it.copy(
+                                    transferredBytes = absoluteBytes,
+                                    currentFile = file,
+                                    speedBytesPerSec = sample.bytesPerSec,
+                                    etaSeconds = sample.etaSeconds,
+                                    state = if (it.state == TransferQueueState.PAUSED) TransferQueueState.PAUSED else TransferQueueState.RUNNING,
+                                )
+                            }
                         }
                     }
                     FileOperation.MOVE -> repository.moveFiles(
@@ -424,12 +526,18 @@ class TransferQueueManager @Inject constructor(
                     ) { moved, _, file ->
                         ensureNotCancelled(taskId)
                         limiter.throttle(moved)
-                        updateTask(taskId) {
-                            it.copy(
-                                transferredBytes = transferredBefore + moved,
-                                currentFile = file,
-                                state = if (it.state == TransferQueueState.PAUSED) TransferQueueState.PAUSED else TransferQueueState.RUNNING,
-                            )
+                        val absoluteBytes = transferredBefore + moved
+                        val sample = speedTracker.sample(absoluteBytes, totalBytes)
+                        if (sample != null) {
+                            updateTask(taskId) {
+                                it.copy(
+                                    transferredBytes = absoluteBytes,
+                                    currentFile = file,
+                                    speedBytesPerSec = sample.bytesPerSec,
+                                    etaSeconds = sample.etaSeconds,
+                                    state = if (it.state == TransferQueueState.PAUSED) TransferQueueState.PAUSED else TransferQueueState.RUNNING,
+                                )
+                            }
                         }
                     }
                     FileOperation.DELETE -> repository.deleteFiles(listOf(source)) { file ->
@@ -451,7 +559,15 @@ class TransferQueueManager @Inject constructor(
                 }
                 persistTaskNow(taskId)
             }
-            updateTask(taskId) { it.copy(state = TransferQueueState.COMPLETED, conflict = null) }
+            updateTask(taskId) {
+                it.copy(
+                    state = TransferQueueState.COMPLETED,
+                    conflict = null,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = null,
+                )
+            }
+            emitCompletedDestinations(initial)
         } catch (cancelled: CancellationException) {
             if (isCancelled(taskId)) {
                 updateTask(taskId) {
@@ -459,6 +575,8 @@ class TransferQueueManager @Inject constructor(
                         state = TransferQueueState.CANCELLED,
                         conflict = null,
                         error = it.partialJournalMessage("Transfer cancelled") ?: "Transfer cancelled",
+                        speedBytesPerSec = 0L,
+                        etaSeconds = null,
                     )
                 }
             } else {
@@ -471,6 +589,8 @@ class TransferQueueManager @Inject constructor(
                     error = it.partialJournalMessage(error.message ?: error::class.simpleName),
                     retryCount = it.retryCount + 1,
                     conflict = null,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = null,
                 )
             }
         } finally {
@@ -605,9 +725,10 @@ class TransferQueueManager @Inject constructor(
         repository: FileRepository,
         conflict: TransferConflict,
         operation: FileOperation,
+        isRetry: Boolean = false,
     ): Boolean {
         val candidatePath = conflict.plannedKeepBothPath ?: return false
-        return matchesDelivery(repository, conflict.sourcePath, candidatePath, operation)
+        return matchesDelivery(repository, conflict.sourcePath, candidatePath, operation, isRetry)
     }
 
     private suspend fun matchesDelivery(
@@ -615,6 +736,7 @@ class TransferQueueManager @Inject constructor(
         sourcePath: String,
         destinationPath: String,
         operation: FileOperation,
+        isRetry: Boolean = false,
     ): Boolean {
         val candidate = runCatching { repository.getFileInfo(destinationPath) }.getOrNull() ?: return false
         val source = runCatching { repository.getFileInfo(sourcePath) }.getOrNull()
@@ -622,8 +744,9 @@ class TransferQueueManager @Inject constructor(
         if (source.isDirectory != candidate.isDirectory) return false
         if (source.isDirectory) return true
         if (source.size != candidate.size) return false
+        val maxChecksumBytes = if (isRetry) 2L * 1024L * 1024L * 1024L else 32L * 1024L * 1024L
         if (repository.capabilityMatrix(sourcePath).isActionEnabled(RepositoryOperation.CHECKSUM) &&
-            source.size <= 2L * 1024L * 1024L * 1024L
+            source.size <= maxChecksumBytes
         ) {
             return runCatching {
                 repository.getChecksum(sourcePath) == repository.getChecksum(destinationPath)
@@ -690,8 +813,161 @@ class TransferQueueManager @Inject constructor(
         }
     }
 
+    private suspend fun executeArchiveTask(
+        initial: TransferQueueTask,
+        speedTracker: TransferSpeedTracker,
+    ) {
+        val taskId = initial.id
+        val options = archiveOptions[taskId]
+        try {
+            awaitRunnable(taskId)
+            ensureNotCancelled(taskId)
+            when (initial.operation) {
+                FileOperation.EXTRACT -> {
+                    val archivePath = initial.sourcePaths.first()
+                    val result = archiveHelper.extract(
+                        archivePath = archivePath,
+                        destination = initial.destination,
+                        entriesToExtract = options?.entriesToExtract,
+                        password = options?.password?.copyOf(),
+                    ) { written, total, entry ->
+                        ensureNotCancelled(taskId)
+                        val sample = speedTracker.sample(written, total)
+                        if (sample != null) {
+                            updateTask(taskId) {
+                                it.copy(
+                                    transferredBytes = written,
+                                    totalBytes = total.coerceAtLeast(written),
+                                    currentFile = entry,
+                                    speedBytesPerSec = sample.bytesPerSec,
+                                    etaSeconds = sample.etaSeconds,
+                                )
+                            }
+                        }
+                    }
+                    result.getOrThrow()
+                }
+                FileOperation.COMPRESS -> {
+                    val format = options?.format ?: inferArchiveFormat(initial.destination)
+                    val result = archiveHelper.createArchive(
+                        outputPath = initial.destination,
+                        sourcePaths = initial.sourcePaths,
+                        format = format,
+                        password = options?.password?.copyOf(),
+                    ) { written, total, file ->
+                        ensureNotCancelled(taskId)
+                        val sample = speedTracker.sample(written, total)
+                        if (sample != null) {
+                            updateTask(taskId) {
+                                it.copy(
+                                    transferredBytes = written,
+                                    totalBytes = total.coerceAtLeast(written),
+                                    currentFile = file,
+                                    speedBytesPerSec = sample.bytesPerSec,
+                                    etaSeconds = sample.etaSeconds,
+                                )
+                            }
+                        }
+                    }
+                    result.getOrThrow()
+                }
+                else -> error("Unexpected archive operation: ${initial.operation}")
+            }
+            ensureNotCancelled(taskId)
+            updateTask(taskId) {
+                it.copy(
+                    state = TransferQueueState.COMPLETED,
+                    completedSources = it.sourcePaths.size,
+                    transferredBytes = it.totalBytes.coerceAtLeast(it.transferredBytes),
+                    conflict = null,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = null,
+                )
+            }
+            archiveOptions.remove(taskId)?.wipeSecrets()
+            emitCompletedDestinations(initial)
+        } catch (cancelled: CancellationException) {
+            if (isCancelled(taskId)) {
+                updateTask(taskId) {
+                    it.copy(
+                        state = TransferQueueState.CANCELLED,
+                        conflict = null,
+                        error = "Transfer cancelled",
+                        speedBytesPerSec = 0L,
+                        etaSeconds = null,
+                    )
+                }
+                archiveOptions.remove(taskId)?.wipeSecrets()
+            } else {
+                throw cancelled
+            }
+        } catch (error: Exception) {
+            updateTask(taskId) {
+                it.copy(
+                    state = TransferQueueState.FAILED,
+                    error = error.message ?: error::class.simpleName,
+                    retryCount = it.retryCount + 1,
+                    conflict = null,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = null,
+                )
+            }
+        } finally {
+            synchronized(lock) {
+                cancelledIds.remove(taskId)
+                pauseSignals.remove(taskId)
+                conflictWaiters.remove(taskId)
+            }
+        }
+    }
+
+    private fun emitCompletedDestinations(task: TransferQueueTask) {
+        when (task.operation) {
+            FileOperation.COMPRESS -> File(task.destination).parent?.let { _completedDestinations.tryEmit(it) }
+            FileOperation.DELETE -> task.sourcePaths
+                .mapNotNull { File(it).parent }
+                .distinct()
+                .forEach { _completedDestinations.tryEmit(it) }
+            else -> if (task.destination.isNotBlank()) _completedDestinations.tryEmit(task.destination)
+        }
+    }
+
+    private fun inferArchiveFormat(outputPath: String): ArchiveFormat = when {
+        outputPath.endsWith(".7z", ignoreCase = true) -> ArchiveFormat.SEVEN_Z
+        outputPath.endsWith(".tar.gz", ignoreCase = true) || outputPath.endsWith(".tgz", ignoreCase = true) -> ArchiveFormat.TAR_GZ
+        else -> ArchiveFormat.ZIP
+    }
+
+    private data class SpeedSample(val bytesPerSec: Long, val etaSeconds: Long?)
+
+    private class TransferSpeedTracker {
+        private var lastNanos = System.nanoTime()
+        private var lastBytes = 0L
+        private var emaBytesPerSec = 0.0
+
+        fun sample(currentBytes: Long, totalBytes: Long): SpeedSample? {
+            val now = System.nanoTime()
+            val elapsedNanos = now - lastNanos
+            if (elapsedNanos < SPEED_SAMPLE_INTERVAL_NANOS && currentBytes < totalBytes) return null
+            val deltaBytes = (currentBytes - lastBytes).coerceAtLeast(0L)
+            val instantRate = if (elapsedNanos > 0L) (deltaBytes * 1_000_000_000.0) / elapsedNanos else 0.0
+            emaBytesPerSec = if (emaBytesPerSec <= 0.0) instantRate else (EMA_ALPHA * instantRate) + ((1.0 - EMA_ALPHA) * emaBytesPerSec)
+            lastNanos = now
+            lastBytes = currentBytes
+            val speed = emaBytesPerSec.toLong().coerceAtLeast(0L)
+            val eta = if (speed > 0L && totalBytes > currentBytes) {
+                ((totalBytes - currentBytes) / speed).coerceAtLeast(1L)
+            } else {
+                null
+            }
+            return SpeedSample(speed, eta)
+        }
+    }
+
     private companion object {
         const val PERSIST_INTERVAL_NANOS = 250_000_000L
+        const val SPEED_SAMPLE_INTERVAL_NANOS = 250_000_000L
+        const val EMA_ALPHA = 0.30
         const val MAX_DIFF_BYTES = 64 * 1024
         const val MAX_DIFF_LINES = 80
         val TEXT_EXTENSIONS = setOf("txt", "md", "json", "xml", "yaml", "yml", "toml", "ini", "cfg", "conf", "log", "csv", "tsv", "kt", "java", "js", "ts", "html", "css", "py", "rs", "go", "sql")

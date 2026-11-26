@@ -33,6 +33,7 @@ internal data class VaultIndexRecord(
 
 class VaultSession internal constructor(
     internal val key: SecretKey,
+    private val wipeableKeyBytes: ByteArray? = null,
 ) {
     @Volatile
     private var unlocked = true
@@ -45,6 +46,7 @@ class VaultSession internal constructor(
 
     internal fun lock() {
         unlocked = false
+        wipeableKeyBytes?.fill(0)
     }
 }
 

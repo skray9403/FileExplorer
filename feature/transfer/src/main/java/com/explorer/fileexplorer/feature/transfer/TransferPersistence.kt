@@ -115,6 +115,8 @@ internal fun TransferQueueTask.recoverAfterProcessDeath(): TransferQueueTask =
                 TRANSFER_RECOVERY_ERROR
             },
             conflict = null,
+            speedBytesPerSec = 0L,
+            etaSeconds = null,
         )
     } else {
         this

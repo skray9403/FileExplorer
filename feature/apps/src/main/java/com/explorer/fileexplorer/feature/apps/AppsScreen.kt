@@ -1,5 +1,10 @@
 package com.explorer.fileexplorer.feature.apps
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.Launch
+import androidx.compose.material.icons.rounded.Info
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -12,9 +17,11 @@ import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -29,6 +36,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import androidx.activity.compose.PredictiveBackHandler
+import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
+import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
+import com.explorer.fileexplorer.core.designsystem.FolioSubScreenHeadline
+import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import kotlin.coroutines.cancellation.CancellationException
+
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
@@ -244,7 +261,7 @@ class AppsViewModel @Inject constructor(
 
 // -- Screen --
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppsScreen(
     viewModel: AppsViewModel = hiltViewModel(),
@@ -255,61 +272,90 @@ fun AppsScreen(
 
     LaunchedEffect(Unit) { viewModel.toasts.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(DesignSystemR.string.apps_count, state.appCount)) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(DesignSystemR.string.back)) } },
-                actions = {
-                    var sortExpanded by remember { mutableStateOf(false) }
-                    IconButton(onClick = { sortExpanded = true }) { Icon(Icons.AutoMirrored.Filled.Sort, stringResource(DesignSystemR.string.sort)) }
-                    DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
-                        AppSort.entries.forEach { sort ->
-                            DropdownMenuItem(
-                                text = { Text(sort.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) },
-                                onClick = { viewModel.setSort(sort); sortExpanded = false },
-                                trailingIcon = {
-                                    if (state.sort == sort) Icon(
-                                        if (state.sortAsc) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
-                                        null, modifier = Modifier.size(16.dp))
-                                })
-                        }
-                    }
-                    IconButton(onClick = viewModel::refresh) { Icon(Icons.Filled.Refresh, stringResource(DesignSystemR.string.refresh)) }
-                },
-            )
-        },
-    ) { padding ->
-        Column(Modifier.padding(padding)) {
-            // Search
-            OutlinedTextField(value = state.searchQuery, onValueChange = viewModel::setSearch,
-                placeholder = { Text(stringResource(DesignSystemR.string.search_apps_hint)) }, singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-            // Filter chips
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppFilter.entries.forEach { filter ->
-                    FilterChip(selected = state.filter == filter,
-                        onClick = { viewModel.setFilter(filter) },
-                        label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) })
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                top = statusBarTop + 16.dp,
+                bottom = 128.dp,
+                start = 16.dp,
+                end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+
+
+            item(key = "apps_filters") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = state.filter == filter,
+                            onClick = { viewModel.setFilter(filter) },
+                            label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
             if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                item(key = "apps_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LoadingIndicator()
+                    }
+                }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(state.filteredApps, key = { it.packageName }) { app ->
-                        AppListItem(app = app,
+                itemsIndexed(
+                    items = state.filteredApps,
+                    key = { _, app -> app.packageName },
+                ) { index, app ->
+                    FolioSegmentedCard(
+                        index = index,
+                        count = state.filteredApps.size,
+                        onClick = { viewModel.showDetails(app) },
+                    ) {
+                        AppListItem(
+                            app = app,
                             onOpen = { viewModel.openApp(app.packageName) },
-                            onDetails = { viewModel.showDetails(app) })
+                            onDetails = { viewModel.showDetails(app) },
+                        )
                     }
                 }
             }
         }
+
+        FolioTopScrim(
+            height = statusBarTop + 16.dp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FolioBottomScrim(
+            height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        FolioSubScreenBottomBar(
+            title = stringResource(DesignSystemR.string.apps_count, state.appCount),
+            onNavigateBack = onNavigateBack,
+            searchQuery = state.searchQuery,
+            searchHint = stringResource(DesignSystemR.string.search_apps_hint),
+            onSearchQueryChange = viewModel::setSearch,
+            onFabClick = null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     // App details sheet
@@ -332,24 +378,35 @@ private fun AppListItem(app: AppInfo, onOpen: () -> Unit, onDetails: () -> Unit)
     ListItem(
         headlineContent = { Text(app.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            Text(stringResource(DesignSystemR.string.app_package_size, app.packageName, formatApkSize(app.apkSize)),
-                style = MaterialTheme.typography.bodySmall, maxLines = 1,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(DesignSystemR.string.app_package_size, app.packageName, formatApkSize(app.apkSize)),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
         leadingContent = {
             app.icon?.let { drawable ->
-                Image(bitmap = drawable.toBitmap(40, 40).asImageBitmap(), contentDescription = null,
-                    modifier = Modifier.size(40.dp))
-            } ?: Icon(Icons.Filled.Android, null, modifier = Modifier.size(40.dp))
+                Image(
+                    bitmap = drawable.toBitmap(40, 40).asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                )
+            } ?: Icon(Icons.Rounded.Android, null, modifier = Modifier.size(40.dp))
         },
         trailingContent = {
             Row {
                 if (!app.isSystem) {
-                    IconButton(onClick = onOpen) { Icon(Icons.Filled.Launch, stringResource(DesignSystemR.string.open), modifier = Modifier.size(20.dp)) }
+                    IconButton(onClick = onOpen) {
+                        Icon(Icons.Rounded.Launch, stringResource(DesignSystemR.string.open), modifier = Modifier.size(20.dp))
+                    }
                 }
-                IconButton(onClick = onDetails) { Icon(Icons.Filled.Info, stringResource(DesignSystemR.string.details), modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = onDetails) {
+                    Icon(Icons.Rounded.Info, stringResource(DesignSystemR.string.details), modifier = Modifier.size(20.dp))
+                }
             }
         },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
 

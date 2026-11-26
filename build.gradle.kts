@@ -13,8 +13,8 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import javax.xml.parsers.DocumentBuilderFactory
 
-private val MIN_COMPILE_SDK = 36
-private val MIN_TARGET_SDK = 35
+private val MIN_COMPILE_SDK = 37
+private val MIN_TARGET_SDK = 37
 private val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
 private data class ResolvedDependency(
@@ -518,6 +518,11 @@ val scanDependencyAdvisories = tasks.register("scanDependencyAdvisories") {
 }
 
 subprojects {
+    plugins.withId("org.jetbrains.kotlin.plugin.compose") {
+        extensions.configure<org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginExtension> {
+            stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose-stability.conf"))
+        }
+    }
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn(verifyAccessibilityLocalization, verifyAndroidUpgradeReadiness, verifyDependencyProvenance)
     }
