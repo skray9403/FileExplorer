@@ -733,7 +733,10 @@ fun FolioMorphingBottomBar(
                                                     contentColor = colorScheme.onSurface,
                                                     shadowElevation = 6.dp,
                                                     border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                                                    modifier = Modifier.height(44.dp).widthIn(min = 132.dp, max = 232.dp),
+                                                    modifier = Modifier.height(44.dp).widthIn(
+                                                        min = 132.dp,
+                                                        max = totalW - (if (hasFab) 114.dp else 50.dp),
+                                                    ),
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 5.dp),
