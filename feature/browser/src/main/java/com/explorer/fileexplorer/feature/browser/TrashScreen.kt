@@ -234,15 +234,6 @@ fun TrashScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "trash_headline") {
-                FolioSubScreenHeadline(
-                    title = if (state.selectionMode) {
-                        stringResource(DesignSystemR.string.selected_count, state.selectedCount)
-                    } else {
-                        stringResource(DesignSystemR.string.trash)
-                    }
-                )
-            }
 
             item(key = "trash_info") {
                 ListItem(

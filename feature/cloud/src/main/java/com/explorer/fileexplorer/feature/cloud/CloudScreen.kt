@@ -472,12 +472,6 @@ private fun CloudBrowserScreen(
                 bottom = FolioSubScreenBarDefaults.BottomBarHeight + 48.dp,
             ),
         ) {
-            item(key = "cloud_browser_headline") {
-                FolioSubScreenHeadline(
-                    title = account.displayName.ifEmpty { account.service.displayName },
-                    subtitle = account.email,
-                )
-            }
             if (folderDepth > 0) {
                 item(key = "cloud_browser_up") {
                     TextButton(onClick = onNavigateUp) {

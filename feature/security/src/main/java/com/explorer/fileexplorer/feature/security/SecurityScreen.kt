@@ -923,10 +923,6 @@ fun SecurityScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "sec_headline") {
-                FolioSubScreenHeadline(title = stringResource(DesignSystemR.string.security))
-            }
-
             // App Lock
             item(key = "sec_app_lock") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
