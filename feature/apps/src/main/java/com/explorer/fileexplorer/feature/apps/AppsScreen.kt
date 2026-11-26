@@ -1,8 +1,9 @@
+package com.explorer.fileexplorer.feature.apps
+
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Launch
 import androidx.compose.material.icons.rounded.Info
-package com.explorer.fileexplorer.feature.apps
 
 import android.Manifest
 import android.content.Context
