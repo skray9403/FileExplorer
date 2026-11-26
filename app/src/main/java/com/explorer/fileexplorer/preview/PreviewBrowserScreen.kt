@@ -87,6 +87,7 @@ import androidx.compose.material.icons.rounded.ViewColumn
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -142,7 +143,7 @@ import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewBrowserScreen(
     onOpenSettings: () -> Unit,
