@@ -306,7 +306,7 @@ fun StorageAnalyzerScreen(
             onNavigateBack = onNavigateBack,
             fabIcon = if (state.isScanning) Icons.Filled.Close else Icons.Filled.Refresh,
             fabContentDescription = stringResource(if (state.isScanning) DesignSystemR.string.cancel_scan else DesignSystemR.string.rescan_storage),
-            onFabClick = if (state.isScanning) viewModel::cancelScan else viewModel::scan,
+            onFabClick = if (state.isScanning) { { viewModel.cancelScan() } } else { { viewModel.scan() } },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
