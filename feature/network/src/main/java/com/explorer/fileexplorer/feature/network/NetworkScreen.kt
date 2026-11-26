@@ -400,6 +400,7 @@ private fun SftpHostKeyDialog(
     )
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ConnectionListItem(
     connection: ConnectionEntity,
@@ -461,7 +462,7 @@ private fun ConnectionListItem(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RemoteBrowserScreen(
     files: List<FileItem>,
@@ -525,6 +526,7 @@ private fun RemoteBrowserScreen(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ConnectionFormDialog(
     editing: ConnectionEntity?,

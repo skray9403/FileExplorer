@@ -433,7 +433,7 @@ private fun CloudAccountItem(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun CloudBrowserScreen(
     account: CloudAccount,
