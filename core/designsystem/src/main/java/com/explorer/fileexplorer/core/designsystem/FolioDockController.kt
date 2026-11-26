@@ -78,6 +78,8 @@ class FolioDockController {
     var onExecuteClipboardTask by mutableStateOf<((Long) -> Unit)?>(null)
     var fabMenuItems by mutableStateOf<List<FolioFabMenuAction>>(emptyList())
     var isDockMinimizedByScroll by mutableStateOf(false)
+    var predictiveBackProgress by mutableStateOf(0f)
+    var predictiveBackEdgeSign by mutableStateOf(1f)
 
     fun onFastScrollDown() { isDockMinimizedByScroll = true }
     fun onFastScrollUp() { isDockMinimizedByScroll = false }
@@ -117,6 +119,7 @@ class FolioDockController {
         onExecuteClipboardTask = null
         fabMenuItems = emptyList()
         isDockMinimizedByScroll = false
+        predictiveBackProgress = 0f
     }
 }
 
