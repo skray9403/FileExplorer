@@ -12,6 +12,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
@@ -101,6 +102,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,13 +111,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -142,6 +148,7 @@ import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
 import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.MonoSpring
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
+import com.explorer.fileexplorer.core.designsystem.folioDragToSelectTrigger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -156,6 +163,8 @@ fun PreviewBrowserScreen(
     val dockController = LocalFolioDockController.current
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
+    val viewConfig = LocalViewConfiguration.current
+    val fastSpatialSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
 
     val tabs = remember {
         mutableStateListOf(
@@ -177,6 +186,9 @@ fun PreviewBrowserScreen(
 
     var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
     val selectionMode = selectedPaths.isNotEmpty()
+    var inPlaceMenuItemPath by remember { mutableStateOf<String?>(null) }
+    val inPlaceMenuBounds = remember { mutableStateMapOf<Int, Rect>() }
+    var inPlaceHoveredIndex by remember { mutableStateOf<Int?>(null) }
 
     var inlineSearchActive by remember { mutableStateOf(false) }
     var inlineSearchQuery by remember { mutableStateOf("") }
@@ -200,6 +212,7 @@ fun PreviewBrowserScreen(
         val idx = selectedTabIndex.coerceIn(0, tabs.lastIndex)
         tabs[idx] = tabs[idx].copy(path = newPath)
         selectedPaths = emptySet()
+        inPlaceMenuItemPath = null
     }
 
     val navigateUp: () -> Unit = {
@@ -604,23 +617,119 @@ fun PreviewBrowserScreen(
                         ) {
                             gridItems(rawFiles, key = { it.path }) { item ->
                                 val isSel = item.path in selectedPaths
-                                PreviewFileGridCard(
-                                    item = item,
-                                    selected = isSel,
-                                    onClick = {
-                                        if (selectionMode) {
-                                            selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
-                                        } else if (item.isDirectory) {
-                                            navigateTo(item.path)
-                                        } else {
-                                            Toast.makeText(context, item.name, Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
-                                    },
-                                )
+                                val isInPlaceOpen = inPlaceMenuItemPath == item.path && selectedPaths.size == 1
+                                val itemPrimary = remember(item.path) {
+                                    listOf(
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Edit,
+                                            labelRes = DesignSystemR.string.rename,
+                                            onClick = { toastMsg(DesignSystemR.string.rename) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Share,
+                                            labelRes = DesignSystemR.string.share,
+                                            onClick = { toastMsg(DesignSystemR.string.share) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.FolderZip,
+                                            labelRes = DesignSystemR.string.compress,
+                                            onClick = { toastMsg(DesignSystemR.string.compress) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Info,
+                                            labelRes = DesignSystemR.string.details,
+                                            onClick = { toastMsg(DesignSystemR.string.details) },
+                                        ),
+                                    )
+                                }
+                                val itemSecondary = remember(item.path) {
+                                    listOf(
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Add,
+                                            labelRes = DesignSystemR.string.open_in_new_tab,
+                                            onClick = {
+                                                openNewTab(if (item.isDirectory) item.path else currentPath)
+                                            },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Lock,
+                                            labelRes = DesignSystemR.string.encrypt_files,
+                                            onClick = { toastMsg(DesignSystemR.string.encrypt_files) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.LockOpen,
+                                            labelRes = DesignSystemR.string.decrypt_files,
+                                            onClick = { toastMsg(DesignSystemR.string.decrypt_files) },
+                                        ),
+                                    )
+                                }
+                                var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                Box {
+                                    PreviewFileGridCard(
+                                        item = item,
+                                        selected = isSel,
+                                        modifier = Modifier
+                                            .onGloballyPositioned { cardCoords = it }
+                                            .folioDragToSelectTrigger(
+                                                enabled = !selectionMode || (selectedPaths.size == 1 && isSel),
+                                                touchSlop = viewConfig.touchSlop,
+                                                longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
+                                                getCoordinates = { cardCoords },
+                                                itemBounds = inPlaceMenuBounds,
+                                                openOnUpwardDrag = false,
+                                                onOpenMenu = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    selectedPaths = setOf(item.path)
+                                                    inPlaceMenuBounds.clear()
+                                                    inPlaceHoveredIndex = null
+                                                    inPlaceMenuItemPath = item.path
+                                                },
+                                                onHoverChanged = { idx ->
+                                                    if (idx != inPlaceHoveredIndex) {
+                                                        inPlaceHoveredIndex = idx
+                                                        if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
+                                                },
+                                                onDragCommit = { idx ->
+                                                    if (idx != null) {
+                                                        inPlaceMenuItemPath = null
+                                                        inPlaceHoveredIndex = null
+                                                        selectedPaths = emptySet()
+                                                        itemPrimary.getOrNull(idx)?.onClick()
+                                                    }
+                                                },
+                                            ),
+                                        onClick = {
+                                            if (selectionMode) {
+                                                inPlaceMenuItemPath = null
+                                                selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
+                                            } else if (item.isDirectory) {
+                                                navigateTo(item.path)
+                                            } else {
+                                                Toast.makeText(context, item.name, Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                    )
+                                    if (isInPlaceOpen) {
+                                        PreviewInPlaceItemMenuPopup(
+                                            primaryItems = itemPrimary,
+                                            secondaryItems = itemSecondary,
+                                            hoveredIndex = inPlaceHoveredIndex,
+                                            fastSpatialSpec = fastSpatialSpec,
+                                            onItemBoundsChanged = { idx, rect -> inPlaceMenuBounds[idx] = rect },
+                                            onDismiss = {
+                                                inPlaceMenuItemPath = null
+                                                inPlaceHoveredIndex = null
+                                            },
+                                            onAction = { action ->
+                                                inPlaceMenuItemPath = null
+                                                inPlaceHoveredIndex = null
+                                                selectedPaths = emptySet()
+                                                action.onClick()
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -637,24 +746,120 @@ fun PreviewBrowserScreen(
                         ) {
                             items(rawFiles, key = { it.path }) { item ->
                                 val isSel = item.path in selectedPaths
-                                PreviewFileListRow(
-                                    item = item,
-                                    selected = isSel,
-                                    visibleColumns = visibleColumns,
-                                    onClick = {
-                                        if (selectionMode) {
-                                            selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
-                                        } else if (item.isDirectory) {
-                                            navigateTo(item.path)
-                                        } else {
-                                            Toast.makeText(context, item.name, Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
-                                    },
-                                )
+                                val isInPlaceOpen = inPlaceMenuItemPath == item.path && selectedPaths.size == 1
+                                val itemPrimary = remember(item.path) {
+                                    listOf(
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Edit,
+                                            labelRes = DesignSystemR.string.rename,
+                                            onClick = { toastMsg(DesignSystemR.string.rename) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Share,
+                                            labelRes = DesignSystemR.string.share,
+                                            onClick = { toastMsg(DesignSystemR.string.share) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.FolderZip,
+                                            labelRes = DesignSystemR.string.compress,
+                                            onClick = { toastMsg(DesignSystemR.string.compress) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Info,
+                                            labelRes = DesignSystemR.string.details,
+                                            onClick = { toastMsg(DesignSystemR.string.details) },
+                                        ),
+                                    )
+                                }
+                                val itemSecondary = remember(item.path) {
+                                    listOf(
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Add,
+                                            labelRes = DesignSystemR.string.open_in_new_tab,
+                                            onClick = {
+                                                openNewTab(if (item.isDirectory) item.path else currentPath)
+                                            },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.Lock,
+                                            labelRes = DesignSystemR.string.encrypt_files,
+                                            onClick = { toastMsg(DesignSystemR.string.encrypt_files) },
+                                        ),
+                                        FolioFabMenuAction(
+                                            icon = Icons.Rounded.LockOpen,
+                                            labelRes = DesignSystemR.string.decrypt_files,
+                                            onClick = { toastMsg(DesignSystemR.string.decrypt_files) },
+                                        ),
+                                    )
+                                }
+                                var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                Box {
+                                    PreviewFileListRow(
+                                        item = item,
+                                        selected = isSel,
+                                        visibleColumns = visibleColumns,
+                                        modifier = Modifier
+                                            .onGloballyPositioned { rowCoords = it }
+                                            .folioDragToSelectTrigger(
+                                                enabled = !selectionMode || (selectedPaths.size == 1 && isSel),
+                                                touchSlop = viewConfig.touchSlop,
+                                                longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
+                                                getCoordinates = { rowCoords },
+                                                itemBounds = inPlaceMenuBounds,
+                                                openOnUpwardDrag = false,
+                                                onOpenMenu = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    selectedPaths = setOf(item.path)
+                                                    inPlaceMenuBounds.clear()
+                                                    inPlaceHoveredIndex = null
+                                                    inPlaceMenuItemPath = item.path
+                                                },
+                                                onHoverChanged = { idx ->
+                                                    if (idx != inPlaceHoveredIndex) {
+                                                        inPlaceHoveredIndex = idx
+                                                        if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
+                                                },
+                                                onDragCommit = { idx ->
+                                                    if (idx != null) {
+                                                        inPlaceMenuItemPath = null
+                                                        inPlaceHoveredIndex = null
+                                                        selectedPaths = emptySet()
+                                                        itemPrimary.getOrNull(idx)?.onClick()
+                                                    }
+                                                },
+                                            ),
+                                        onClick = {
+                                            if (selectionMode) {
+                                                inPlaceMenuItemPath = null
+                                                selectedPaths = if (isSel) selectedPaths - item.path else selectedPaths + item.path
+                                            } else if (item.isDirectory) {
+                                                navigateTo(item.path)
+                                            } else {
+                                                Toast.makeText(context, item.name, Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                    )
+                                    if (isInPlaceOpen) {
+                                        PreviewInPlaceItemMenuPopup(
+                                            primaryItems = itemPrimary,
+                                            secondaryItems = itemSecondary,
+                                            hoveredIndex = inPlaceHoveredIndex,
+                                            fastSpatialSpec = fastSpatialSpec,
+                                            onItemBoundsChanged = { idx, rect -> inPlaceMenuBounds[idx] = rect },
+                                            onDismiss = {
+                                                inPlaceMenuItemPath = null
+                                                inPlaceHoveredIndex = null
+                                            },
+                                            onAction = { action ->
+                                                inPlaceMenuItemPath = null
+                                                inPlaceHoveredIndex = null
+                                                selectedPaths = emptySet()
+                                                action.onClick()
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1199,24 +1404,60 @@ fun PreviewFileIcon(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PreviewInPlaceItemMenuPopup(
+    primaryItems: List<FolioFabMenuAction>,
+    secondaryItems: List<FolioFabMenuAction>,
+    hoveredIndex: Int?,
+    fastSpatialSpec: androidx.compose.animation.core.FiniteAnimationSpec<Float>,
+    onItemBoundsChanged: (Int, Rect) -> Unit,
+    onDismiss: () -> Unit,
+    onAction: (FolioFabMenuAction) -> Unit,
+) {
+    val density = LocalDensity.current
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    Popup(
+        alignment = Alignment.TopEnd,
+        offset = IntOffset(0, with(density) { 8.dp.roundToPx() }),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(110)) + scaleIn(initialScale = 0.92f, animationSpec = fastSpatialSpec),
+            exit = fadeOut(tween(80)) + scaleOut(targetScale = 0.94f, animationSpec = fastSpatialSpec),
+        ) {
+            FolioSwitchableActionPopup(
+                primaryTitleRes = DesignSystemR.string.actions_menu,
+                secondaryTitleRes = DesignSystemR.string.security,
+                primaryItems = primaryItems,
+                secondaryItems = secondaryItems,
+                hoveredIndex = hoveredIndex,
+                onItemBoundsChanged = onItemBoundsChanged,
+                onItemClick = onAction,
+            )
+        }
+    }
+}
+
 @Composable
 fun PreviewFileListRow(
     item: PreviewFileItem,
     selected: Boolean,
     visibleColumns: Set<PreviewFileColumn>,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = if (selected) colorScheme.secondaryContainer.copy(alpha = 0.65f) else colorScheme.surfaceContainerLow,
         border = if (selected) BorderStroke(1.dp, colorScheme.primary.copy(alpha = 0.45f)) else null,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .clickable(onClick = onClick),
     ) {
         Row(
             modifier = Modifier
@@ -1260,23 +1501,22 @@ fun PreviewFileListRow(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PreviewFileGridCard(
     item: PreviewFileItem,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = if (selected) colorScheme.secondaryContainer.copy(alpha = 0.65f) else colorScheme.surfaceContainerLow,
         border = if (selected) BorderStroke(1.dp, colorScheme.primary.copy(alpha = 0.45f)) else null,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .clickable(onClick = onClick),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),

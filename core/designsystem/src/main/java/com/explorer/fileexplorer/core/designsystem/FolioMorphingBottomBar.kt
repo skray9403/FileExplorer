@@ -13,11 +13,13 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -63,14 +65,12 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Unarchive
-import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingActionButtonMenu
-import androidx.compose.material3.FloatingActionButtonMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -334,8 +334,14 @@ fun FolioMorphingBottomBar(
             )
         }
 
+        LaunchedEffect(controller.selectionMode, controller.selectionActions.selectedCount) {
+            if (!controller.selectionMode || controller.selectionActions.selectedCount <= 1) {
+                selectionPopupOpen = false
+            }
+        }
+
         // OVERLAY LAYER (Menus & Scroll-to-Top): Anchored independently above the dock Row
-        // so opening/closing menus NEVER shifts or jumps the bottom dock!
+        // at a consistent 10.dp gap so opening/closing menus NEVER shifts or jumps the bottom dock!
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -345,9 +351,9 @@ fun FolioMorphingBottomBar(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = PillHeight + 24.dp),
         ) {
-            // Compact Pixel-style Selection Popup (supports Long-Press & Drag-to-Select)
+            // Compact In-Place Expandable Selection Popup (supports Long-Press & Drag-to-Select)
             androidx.compose.animation.AnimatedVisibility(
-                visible = selectionPopupOpen && controller.selectionMode && enabledSelPrimary.isNotEmpty(),
+                visible = selectionPopupOpen && controller.selectionMode && controller.selectionActions.selectedCount > 1 && enabledSelPrimary.isNotEmpty(),
                 enter = fadeIn(tween(110)) +
                     scaleIn(initialScale = 0.92f, animationSpec = fastSpatialSpec),
                 exit = fadeOut(tween(80)) +
@@ -369,7 +375,7 @@ fun FolioMorphingBottomBar(
                 )
             }
 
-            // Compact Pixel-style Sort / View Popup (supports Long-Press & Drag-to-Select)
+            // Compact In-Place Expandable Sort / View Popup (supports Long-Press & Drag-to-Select)
             androidx.compose.animation.AnimatedVisibility(
                 visible = sortPopupOpen && !controller.selectionMode && !effectiveInlineSearch && !controller.isSubScreen && hasSort,
                 enter = fadeIn(tween(110)) +
@@ -393,35 +399,53 @@ fun FolioMorphingBottomBar(
                 )
             }
 
-            // Contextual "+" FAB Menu Fan-Out (supports Long-Press & Drag-to-Select)
-            if (!controller.selectionMode && !effectiveInlineSearch && !controller.isSubScreen && hasFab) {
-                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                    FloatingActionButtonMenu(
-                        expanded = fabMenuExpanded,
-                        button = {},
-                    ) {
-                        enabledFabActions.forEachIndexed { idx, action ->
-                            val isHovered = hoveredFabIndex == idx
-                            FloatingActionButtonMenuItem(
-                                onClick = {
-                                    fabMenuExpanded = false
-                                    hoveredFabIndex = null
-                                    action.onClick()
+            // Contextual "+" FAB Menu Fan-Out (consistent 10.dp gap above dock, supports Long-Press & Drag-to-Select)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = fabMenuExpanded && !controller.selectionMode && !effectiveInlineSearch && !controller.isSubScreen && hasFab,
+                enter = fadeIn(tween(110)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = fastSpatialSpec),
+                exit = fadeOut(tween(80)) +
+                    scaleOut(targetScale = 0.94f, animationSpec = fastSpatialSpec),
+                modifier = Modifier.align(Alignment.BottomEnd),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    enabledFabActions.forEachIndexed { idx, action ->
+                        val isHovered = hoveredFabIndex == idx
+                        Surface(
+                            onClick = {
+                                fabMenuExpanded = false
+                                hoveredFabIndex = null
+                                action.onClick()
+                            },
+                            shape = CircleShape,
+                            color = if (isHovered) colorScheme.secondaryContainer else colorScheme.primaryContainer,
+                            contentColor = if (isHovered) colorScheme.onSecondaryContainer else colorScheme.onPrimaryContainer,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .onGloballyPositioned { coords ->
+                                    fabItemBounds[idx] = coords.boundsInRoot()
+                                }
+                                .graphicsLayer {
+                                    val s = if (isHovered) 1.04f else 1f
+                                    scaleX = s
+                                    scaleY = s
                                 },
-                                containerColor = if (isHovered) colorScheme.secondaryContainer else colorScheme.primaryContainer,
-                                contentColor = if (isHovered) colorScheme.onSecondaryContainer else colorScheme.onPrimaryContainer,
-                                text = { Text(stringResource(action.labelRes)) },
-                                icon = { Icon(action.icon, null) },
-                                modifier = Modifier
-                                    .onGloballyPositioned { coords ->
-                                        fabItemBounds[idx] = coords.boundsInRoot()
-                                    }
-                                    .graphicsLayer {
-                                        val s = if (isHovered) 1.04f else 1f
-                                        scaleX = s
-                                        scaleY = s
-                                    },
-                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(action.icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Text(
+                                    text = stringResource(action.labelRes),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
                     }
                 }
@@ -494,10 +518,12 @@ fun FolioMorphingBottomBar(
             ) {
                 val totalW = maxWidth
                 val halfW = ((totalW - activeGap) / 2f).coerceAtLeast(120.dp)
+                val isSingleSelection = controller.selectionMode && controller.selectionActions.selectedCount <= 1
+                val singleDeleteW = 116.dp
                 val showMiddle = hasTasks
                 val showRight = when {
                     effectiveInlineSearch -> false
-                    controller.selectionMode -> true
+                    controller.selectionMode -> !controller.selectionActions.insideArchive || !isSingleSelection
                     controller.isSubScreen -> hasSubScreenFab || showSubScreenRightSearch
                     else -> hasFab
                 }
@@ -505,6 +531,7 @@ fun FolioMorphingBottomBar(
                 val middleTargetW = if (showMiddle) TaskPillWidth else 0.dp
                 val rightTargetW = when {
                     !showRight -> 0.dp
+                    isSingleSelection -> singleDeleteW
                     controller.selectionMode -> halfW
                     else -> FabSize
                 }
@@ -518,14 +545,19 @@ fun FolioMorphingBottomBar(
                 val middleAlpha by animateFloatAsState(if (showMiddle) 1f else 0f, effectsFloatSpec, label = "dockMidA")
                 val rightAlpha by animateFloatAsState(if (showRight) 1f else 0f, effectsFloatSpec, label = "dockRightA")
 
+                val selLeftW = if (isSingleSelection) {
+                    (totalW - rightTargetW - gap1Target - gap2Target - middleTargetW).coerceAtLeast(120.dp)
+                } else {
+                    halfW
+                }
                 val slot1TargetMinW = when (leftKind) {
                     LeftPillKind.INLINE_SEARCH -> totalW
-                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> halfW
+                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> selLeftW
                     LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV, LeftPillKind.SUB_SCREEN -> 0.dp
                 }
                 val slot1TargetMaxW = when (leftKind) {
                     LeftPillKind.INLINE_SEARCH -> totalW
-                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> halfW
+                    LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> selLeftW
                     LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV, LeftPillKind.SUB_SCREEN ->
                         (totalW - middleTargetW - rightTargetW - gap1Target - gap2Target).coerceAtLeast(120.dp)
                 }
@@ -589,7 +621,7 @@ fun FolioMorphingBottomBar(
                                                 },
                                                 modifier = Modifier
                                                     .onGloballyPositioned { sortCoords = it }
-                                                    .dragToSelectTrigger(
+                                                    .folioDragToSelectTrigger(
                                                         enabled = enabledSortPrimary.isNotEmpty(),
                                                         touchSlop = viewConfig.touchSlop,
                                                         longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
@@ -1109,7 +1141,7 @@ fun FolioMorphingBottomBar(
                                                 .fillMaxSize()
                                                 .onGloballyPositioned { fabCoords = it }
                                                 .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
-                                                .dragToSelectTrigger(
+                                                .folioDragToSelectTrigger(
                                                     enabled = enabledFabActions.size > 1,
                                                     touchSlop = viewConfig.touchSlop,
                                                     longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
@@ -1203,6 +1235,7 @@ fun FolioMorphingBottomBar(
 
                                     RightPillKind.SELECTION_MANAGE -> {
                                         val actions = controller.selectionActions
+                                        val showMoreButton = actions.selectedCount > 1 && enabledSelPrimary.isNotEmpty()
                                         var moreCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                         Row(
                                             modifier = Modifier.fillMaxSize(),
@@ -1240,63 +1273,67 @@ fun FolioMorphingBottomBar(
                                                         fontWeight = FontWeight.SemiBold,
                                                     )
                                                 }
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(1.dp)
-                                                        .height(20.dp)
-                                                        .background(colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                                                )
-                                            }
-                                            Row(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .fillMaxHeight()
-                                                    .onGloballyPositioned { moreCoords = it }
-                                                    .dragToSelectTrigger(
-                                                        enabled = enabledSelPrimary.isNotEmpty(),
-                                                        touchSlop = viewConfig.touchSlop,
-                                                        longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
-                                                        getCoordinates = { moreCoords },
-                                                        itemBounds = popupItemBounds,
-                                                        onOpenMenu = {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            selectionPopupOpen = true
-                                                        },
-                                                        onHoverChanged = { idx ->
-                                                            if (idx != hoveredPopupIndex) {
-                                                                hoveredPopupIndex = idx
-                                                                if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            }
-                                                        },
-                                                        onDragCommit = { idx ->
-                                                            if (idx != null) {
-                                                                selectionPopupOpen = false
-                                                                hoveredPopupIndex = null
-                                                                enabledSelPrimary.getOrNull(idx)?.onClick()
-                                                            }
-                                                        },
+                                                if (showMoreButton) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .width(1.dp)
+                                                            .height(20.dp)
+                                                            .background(colorScheme.outlineVariant.copy(alpha = 0.55f)),
                                                     )
-                                                    .clickable(
-                                                        enabled = enabledSelPrimary.isNotEmpty(),
-                                                        onClick = { selectionPopupOpen = !selectionPopupOpen },
-                                                    ),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (selectionPopupOpen) Icons.Rounded.Close else Icons.Rounded.MoreHoriz,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(20.dp),
-                                                )
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(
-                                                    text = stringResource(if (selectionPopupOpen) R.string.close else R.string.more),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow = TextOverflow.Clip,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                )
+                                                }
+                                            }
+                                            if (showMoreButton) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight()
+                                                        .onGloballyPositioned { moreCoords = it }
+                                                        .folioDragToSelectTrigger(
+                                                            enabled = enabledSelPrimary.isNotEmpty(),
+                                                            touchSlop = viewConfig.touchSlop,
+                                                            longPressTimeoutMillis = viewConfig.longPressTimeoutMillis,
+                                                            getCoordinates = { moreCoords },
+                                                            itemBounds = popupItemBounds,
+                                                            onOpenMenu = {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                selectionPopupOpen = true
+                                                            },
+                                                            onHoverChanged = { idx ->
+                                                                if (idx != hoveredPopupIndex) {
+                                                                    hoveredPopupIndex = idx
+                                                                    if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                                }
+                                                            },
+                                                            onDragCommit = { idx ->
+                                                                if (idx != null) {
+                                                                    selectionPopupOpen = false
+                                                                    hoveredPopupIndex = null
+                                                                    enabledSelPrimary.getOrNull(idx)?.onClick()
+                                                                }
+                                                            },
+                                                        )
+                                                        .clickable(
+                                                            enabled = enabledSelPrimary.isNotEmpty(),
+                                                            onClick = { selectionPopupOpen = !selectionPopupOpen },
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center,
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (selectionPopupOpen) Icons.Rounded.Close else Icons.Rounded.MoreHoriz,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(20.dp),
+                                                    )
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text(
+                                                        text = stringResource(if (selectionPopupOpen) R.string.close else R.string.more),
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        overflow = TextOverflow.Clip,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1311,12 +1348,13 @@ fun FolioMorphingBottomBar(
 }
 
 /**
- * Enables Gallery Share-style long-press AND drag-upward selection on any overflow trigger.
+ * Enables Gallery Share-style long-press AND drag selection on any overflow trigger.
  * - Normal quick tap falls through to clickable.
- * - Holding for longPressTimeoutMillis OR dragging upward > touchSlop opens the menu immediately
- *   and highlights/selects whichever pill the finger releases over (or leaves menu open if released off-item).
+ * - Holding for longPressTimeoutMillis (or dragging upward > touchSlop when [openOnUpwardDrag] is true)
+ *   opens the menu immediately and highlights/selects whichever item the finger releases over
+ *   (or leaves the menu open in place if released off-item so the user can tap an option).
  */
-private fun Modifier.dragToSelectTrigger(
+fun Modifier.folioDragToSelectTrigger(
     enabled: Boolean,
     touchSlop: Float,
     longPressTimeoutMillis: Long,
@@ -1325,23 +1363,27 @@ private fun Modifier.dragToSelectTrigger(
     onOpenMenu: () -> Unit,
     onHoverChanged: (Int?) -> Unit,
     onDragCommit: (Int?) -> Unit,
+    openOnUpwardDrag: Boolean = true,
 ): Modifier = if (!enabled) this else this.pointerInput(enabled) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         var menuOpened = false
         var lastHovered: Int? = null
 
-        // Phase 1: wait for either longPressTimeoutMillis (hold) or upward drag > touchSlop
+        // Phase 1: wait for either longPressTimeoutMillis (hold) or optional upward drag > touchSlop
         val stillDown = withTimeoutOrNull(longPressTimeoutMillis) {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val change = event.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull false
                 if (!change.pressed) return@withTimeoutOrNull false
                 val delta = change.position - down.position
-                if (delta.y < -touchSlop && abs(delta.y) >= abs(delta.x)) {
+                if (openOnUpwardDrag && delta.y < -touchSlop && abs(delta.y) >= abs(delta.x)) {
                     menuOpened = true
                     onOpenMenu()
                     return@withTimeoutOrNull true
+                }
+                if (!openOnUpwardDrag && delta.getDistance() > touchSlop) {
+                    return@withTimeoutOrNull false
                 }
             }
             @Suppress("UNREACHABLE_CODE")
@@ -1356,7 +1398,7 @@ private fun Modifier.dragToSelectTrigger(
             return@awaitEachGesture
         }
 
-        // Phase 2: track finger movement over menu pills until release
+        // Phase 2: track finger movement over menu items until release
         while (menuOpened) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -1388,12 +1430,14 @@ private fun Modifier.dragToSelectTrigger(
 }
 
 /**
- * Compact, snappy Pixel Launcher-style popup:
- * Slim header pill (with optional ↕ page toggle) + single clean unified rounded card.
+ * ChatGPT-style in-place expandable overflow menu:
+ * Single unified rounded card where secondary actions expand inline inside an elevated sub-card
+ * with a rotating chevron while sibling rows smoothly dim.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FolioSwitchableActionPopup(
+    @Suppress("UNUSED_PARAMETER")
     @StringRes primaryTitleRes: Int,
     @StringRes secondaryTitleRes: Int,
     primaryItems: List<FolioFabMenuAction>,
@@ -1403,127 +1447,165 @@ fun FolioSwitchableActionPopup(
     hoveredIndex: Int? = null,
     onItemBoundsChanged: ((Int, Rect) -> Unit)? = null,
 ) {
-    var showSecondary by remember { mutableStateOf(false) }
+    var secondaryExpanded by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
     val fastSpatial = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
     val hasSecondary = secondaryItems.isNotEmpty()
-    val activeItems = if (showSecondary && hasSecondary) secondaryItems else primaryItems
 
     val chevronRotation by animateFloatAsState(
-        targetValue = if (showSecondary) 180f else 0f,
+        targetValue = if (secondaryExpanded) 90f else 0f,
         animationSpec = fastSpatial,
-        label = "popupSwitchRot",
+        label = "popupExpandChevron",
+    )
+    val siblingAlpha by animateFloatAsState(
+        targetValue = if (secondaryExpanded) 0.35f else 1f,
+        animationSpec = tween(140),
+        label = "popupSiblingDim",
     )
 
-    Column(
-        modifier = modifier.width(196.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = colorScheme.surfaceContainerHigh,
+        contentColor = colorScheme.onSurface,
+        shadowElevation = 8.dp,
+        border = BorderStroke(0.5.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier.width(214.dp),
     ) {
-        Surface(
-            shape = CircleShape,
-            color = colorScheme.surfaceContainerHighest,
-            contentColor = colorScheme.onSurface,
-            shadowElevation = 6.dp,
-            border = BorderStroke(0.5.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp),
+        Column(
+            modifier = Modifier.padding(vertical = 5.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 14.dp, end = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = stringResource(if (showSecondary && hasSecondary) secondaryTitleRes else primaryTitleRes),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                )
-                if (hasSecondary) {
-                    Surface(
-                        onClick = { showSecondary = !showSecondary },
-                        shape = CircleShape,
-                        color = colorScheme.secondaryContainer,
-                        contentColor = colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(30.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Rounded.UnfoldMore,
-                                contentDescription = stringResource(R.string.more_options),
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .graphicsLayer { rotationZ = chevronRotation },
-                            )
+            primaryItems.forEachIndexed { idx, action ->
+                val isHighlighted = action.selected || hoveredIndex == idx
+                val bg = if (isHighlighted) colorScheme.secondaryContainer else Color.Transparent
+                val fg = if (isHighlighted) colorScheme.onSecondaryContainer else colorScheme.onSurface
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(siblingAlpha)
+                        .onGloballyPositioned { coords ->
+                            onItemBoundsChanged?.invoke(idx, coords.boundsInRoot())
                         }
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(bg)
+                        .clickable { onItemClick(action) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = action.icon,
+                        contentDescription = null,
+                        tint = if (isHighlighted) colorScheme.primary else colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(action.labelRes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
+                        color = fg,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    action.trailingIcon?.let { trail ->
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = trail,
+                            contentDescription = null,
+                            tint = colorScheme.primary,
+                            modifier = Modifier.size(15.dp),
+                        )
                     }
                 }
             }
-        }
 
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = colorScheme.surfaceContainerHigh,
-            contentColor = colorScheme.onSurface,
-            shadowElevation = 6.dp,
-            border = BorderStroke(0.5.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            AnimatedContent(
-                targetState = showSecondary && hasSecondary,
-                transitionSpec = {
-                    (fadeIn(tween(110)) + scaleIn(initialScale = 0.96f, animationSpec = fastSpatial))
-                        .togetherWith(fadeOut(tween(60)))
-                },
-                label = "compactPopupPage",
-            ) { _ ->
-                Column(
-                    modifier = Modifier.padding(vertical = 4.dp),
+            if (hasSecondary) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (secondaryExpanded) colorScheme.surfaceContainerHighest else Color.Transparent)
+                        .clickable { secondaryExpanded = !secondaryExpanded }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    activeItems.forEachIndexed { idx, action ->
-                        val isHighlighted = action.selected || hoveredIndex == idx
-                        val bg = if (isHighlighted) colorScheme.secondaryContainer else Color.Transparent
-                        val fg = if (isHighlighted) colorScheme.onSecondaryContainer else colorScheme.onSurface
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coords ->
-                                    onItemBoundsChanged?.invoke(idx, coords.boundsInRoot())
-                                }
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(bg)
-                                .clickable { onItemClick(action) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    Text(
+                        text = stringResource(secondaryTitleRes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (secondaryExpanded) FontWeight.SemiBold else FontWeight.Medium,
+                        color = colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .graphicsLayer { rotationZ = chevronRotation },
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = secondaryExpanded,
+                    enter = expandVertically(tween(150)) + fadeIn(tween(120)),
+                    exit = shrinkVertically(tween(120)) + fadeOut(tween(80)),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = colorScheme.surfaceContainerHighest,
+                        contentColor = colorScheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 4.dp),
                         ) {
-                            Icon(
-                                imageVector = action.icon,
-                                contentDescription = null,
-                                tint = if (isHighlighted) colorScheme.primary else colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = stringResource(action.labelRes),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
-                                color = fg,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            action.trailingIcon?.let { trail ->
-                                Spacer(Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = trail,
-                                    contentDescription = null,
-                                    tint = colorScheme.primary,
-                                    modifier = Modifier.size(15.dp),
-                                )
+                            secondaryItems.forEach { action ->
+                                val isHighlighted = action.selected
+                                val bg = if (isHighlighted) colorScheme.secondaryContainer else Color.Transparent
+                                val fg = if (isHighlighted) colorScheme.onSecondaryContainer else colorScheme.onSurface
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(bg)
+                                        .clickable { onItemClick(action) }
+                                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = action.icon,
+                                        contentDescription = null,
+                                        tint = if (isHighlighted) colorScheme.primary else colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(17.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = stringResource(action.labelRes),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = fg,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    action.trailingIcon?.let { trail ->
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(
+                                            imageVector = trail,
+                                            contentDescription = null,
+                                            tint = colorScheme.primary,
+                                            modifier = Modifier.size(15.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
