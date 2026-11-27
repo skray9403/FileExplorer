@@ -1441,6 +1441,7 @@ private fun PreviewInPlaceItemMenuPopup(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PreviewFileListRow(
     item: PreviewFileItem,
@@ -1448,8 +1449,14 @@ fun PreviewFileListRow(
     visibleColumns: Set<PreviewFileColumn>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    } else {
+        Modifier.clickable(onClick = onClick)
+    }
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = if (selected) colorScheme.secondaryContainer.copy(alpha = 0.65f) else colorScheme.surfaceContainerLow,
@@ -1457,7 +1464,7 @@ fun PreviewFileListRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
+            .then(clickModifier),
     ) {
         Row(
             modifier = Modifier
