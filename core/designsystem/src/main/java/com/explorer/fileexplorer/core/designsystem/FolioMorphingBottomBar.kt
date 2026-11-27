@@ -26,6 +26,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +79,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -87,11 +90,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -101,12 +114,27 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val PillHeight = 58.dp
 private val FabSize = 56.dp
 private val TaskPillWidth = 72.dp
 private val InterPillGap = 10.dp
+
+private val SubfolderBackShape = RoundedCornerShape(
+    topStart = 26.dp,
+    bottomStart = 26.dp,
+    topEnd = 12.dp,
+    bottomEnd = 12.dp,
+)
+private val SubfolderSearchShape = RoundedCornerShape(12.dp)
+private val SubfolderHomeShape = RoundedCornerShape(
+    topStart = 12.dp,
+    bottomStart = 12.dp,
+    topEnd = 26.dp,
+    bottomEnd = 26.dp,
+)
 
 private data class FolioNavDestination(
     val id: String,
@@ -117,6 +145,7 @@ private data class FolioNavDestination(
 private enum class LeftPillKind {
     ROOT_TABS,
     SUBFOLDER_NAV,
+    SUB_SCREEN,
     INLINE_SEARCH,
     SELECTION_EDIT,
     SELECTION_ARCHIVE,
@@ -124,6 +153,7 @@ private enum class LeftPillKind {
 
 private enum class RightPillKind {
     FAB_MENU,
+    SUB_SCREEN_ACTION,
     SELECTION_MANAGE,
 }
 
@@ -137,9 +167,21 @@ fun FolioMorphingBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = LocalReducedMotion.current
+    val haptic = LocalHapticFeedback.current
+    val viewConfig = LocalViewConfiguration.current
+
     var fabMenuExpanded by remember { mutableStateOf(false) }
     var selectionPopupOpen by remember { mutableStateOf(false) }
     var sortPopupOpen by remember { mutableStateOf(false) }
+    var subScreenSearchExpanded by remember { mutableStateOf(false) }
+
+    // Drag-to-select bounds & hovered index per menu
+    val fabItemBounds = remember { mutableStateMapOf<Int, Rect>() }
+    var hoveredFabIndex by remember { mutableStateOf<Int?>(null) }
+
+    val popupItemBounds = remember { mutableStateMapOf<Int, Rect>() }
+    var hoveredPopupIndex by remember { mutableStateOf<Int?>(null) }
+
     val colorScheme = MaterialTheme.colorScheme
     val motionScheme = MaterialTheme.motionScheme
 
@@ -147,12 +189,17 @@ fun FolioMorphingBottomBar(
         selectedDestination,
         controller.contextResetKey,
         controller.isSubfolder,
+        controller.isSubScreen,
+        controller.subScreenTitle,
         controller.selectionMode,
         controller.inlineSearchActive,
     ) {
         fabMenuExpanded = false
         selectionPopupOpen = false
         sortPopupOpen = false
+        subScreenSearchExpanded = false
+        hoveredFabIndex = null
+        hoveredPopupIndex = null
     }
 
     val destinations = remember {
@@ -181,28 +228,51 @@ fun FolioMorphingBottomBar(
     val hasFab = enabledFabActions.isNotEmpty()
     val hasSort = enabledSortPrimary.isNotEmpty()
     val hasSearch = controller.onInlineSearchOpen != null
-    val hasTasks = controller.taskBadgeCount > 0 && !controller.selectionMode && !controller.inlineSearchActive
+    val hasTasks = controller.taskBadgeCount > 0 &&
+        !controller.selectionMode &&
+        !controller.inlineSearchActive &&
+        !controller.isSubScreen
     val compactTabs = hasTasks
 
+    val hasSubScreenFab = controller.isSubScreen &&
+        controller.subScreenOnFabClick != null &&
+        controller.subScreenFabIcon != null
+    val hasSubScreenSearch = controller.isSubScreen && controller.subScreenOnSearchQueryChange != null
+    val showSubScreenRightSearch = hasSubScreenSearch && !hasSubScreenFab
+
+    val effectiveInlineSearch = controller.inlineSearchActive ||
+        (controller.isSubScreen && subScreenSearchExpanded && controller.subScreenOnSearchQueryChange != null)
+
     val leftKind = when {
-        controller.inlineSearchActive -> LeftPillKind.INLINE_SEARCH
+        effectiveInlineSearch -> LeftPillKind.INLINE_SEARCH
         controller.selectionMode -> {
             if (controller.selectionActions.insideArchive) LeftPillKind.SELECTION_ARCHIVE else LeftPillKind.SELECTION_EDIT
         }
+        controller.isSubScreen -> LeftPillKind.SUB_SCREEN
         controller.isSubfolder -> LeftPillKind.SUBFOLDER_NAV
         else -> LeftPillKind.ROOT_TABS
     }
-    val rightKind = if (controller.selectionMode) RightPillKind.SELECTION_MANAGE else RightPillKind.FAB_MENU
+    val rightKind = when {
+        controller.selectionMode -> RightPillKind.SELECTION_MANAGE
+        controller.isSubScreen -> RightPillKind.SUB_SCREEN_ACTION
+        else -> RightPillKind.FAB_MENU
+    }
 
     val closeAllPopups = {
         fabMenuExpanded = false
         selectionPopupOpen = false
         sortPopupOpen = false
+        hoveredFabIndex = null
+        hoveredPopupIndex = null
     }
 
     val triggerSearch: () -> Unit = {
         closeAllPopups()
-        controller.onInlineSearchOpen?.invoke()
+        if (controller.isSubScreen) {
+            subScreenSearchExpanded = true
+        } else {
+            controller.onInlineSearchOpen?.invoke()
+        }
     }
 
     val spatialDpSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec<Dp>()
@@ -214,6 +284,7 @@ fun FolioMorphingBottomBar(
         targetValue = when {
             controller.selectionMode -> colorScheme.surfaceContainerHigh
             fabMenuExpanded -> colorScheme.primary
+            showSubScreenRightSearch -> colorScheme.surfaceContainerHigh
             else -> colorScheme.primaryContainer
         },
         animationSpec = effectsColorSpec,
@@ -223,6 +294,7 @@ fun FolioMorphingBottomBar(
         targetValue = when {
             controller.selectionMode -> colorScheme.onSurface
             fabMenuExpanded -> colorScheme.onPrimary
+            showSubScreenRightSearch -> colorScheme.onSurface
             else -> colorScheme.onPrimaryContainer
         },
         animationSpec = effectsColorSpec,
@@ -235,6 +307,9 @@ fun FolioMorphingBottomBar(
     )
 
     val anyOverlayExpanded = fabMenuExpanded || selectionPopupOpen || sortPopupOpen
+
+    // 1:1 Predictive back morph progress (0f = rest, 1f = full swipe)
+    val backProgress = controller.predictiveBackProgress.coerceIn(0f, 1f)
 
     Box(modifier = modifier.fillMaxWidth()) {
         FolioBottomScrim(
@@ -259,20 +334,20 @@ fun FolioMorphingBottomBar(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .graphicsLayer {
-                    val back = controller.predictiveBackProgress.coerceIn(0f, 1f)
-                    val collapse = maxOf(back, if (controller.isDockMinimizedByScroll) 0.72f else 0f)
-                    scaleX = 1f - collapse * 0.075f
-                    scaleY = 1f - collapse * 0.10f
-                    translationY = collapse * 18.dp.toPx()
-                    translationX = controller.predictiveBackEdgeSign * back * 28.dp.toPx()
-                    alpha = 1f - back * 0.12f
+                    val scrollCollapse = if (controller.isDockMinimizedByScroll && !anyOverlayExpanded && !effectiveInlineSearch) 0.72f else 0f
+                    val collapse = maxOf(backProgress, scrollCollapse)
+                    scaleX = 1f - collapse * 0.065f
+                    scaleY = 1f - collapse * 0.085f
+                    translationY = collapse * 14.dp.toPx()
+                    translationX = controller.predictiveBackEdgeSign * backProgress * 20.dp.toPx()
+                    alpha = 1f - backProgress * 0.14f
                 }
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Compact Pixel-style Selection Popup
+            // Compact Pixel-style Selection Popup (supports Drag-to-Select)
             AnimatedVisibility(
                 visible = selectionPopupOpen && controller.selectionMode && enabledSelPrimary.isNotEmpty(),
                 enter = fadeIn(tween(110)) +
@@ -286,17 +361,20 @@ fun FolioMorphingBottomBar(
                     secondaryTitleRes = R.string.security,
                     primaryItems = enabledSelPrimary,
                     secondaryItems = enabledSelSecondary,
+                    hoveredIndex = hoveredPopupIndex,
+                    onItemBoundsChanged = { idx, rect -> popupItemBounds[idx] = rect },
                     onItemClick = { action ->
                         selectionPopupOpen = false
+                        hoveredPopupIndex = null
                         action.onClick()
                     },
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
 
-            // Compact Pixel-style Sort / View Popup
+            // Compact Pixel-style Sort / View Popup (supports Drag-to-Select)
             AnimatedVisibility(
-                visible = sortPopupOpen && !controller.selectionMode && !controller.inlineSearchActive && hasSort,
+                visible = sortPopupOpen && !controller.selectionMode && !effectiveInlineSearch && !controller.isSubScreen && hasSort,
                 enter = fadeIn(tween(110)) +
                     scaleIn(initialScale = 0.92f, animationSpec = fastSpatialSpec),
                 exit = fadeOut(tween(80)) +
@@ -308,30 +386,46 @@ fun FolioMorphingBottomBar(
                     secondaryTitleRes = R.string.view_options,
                     primaryItems = enabledSortPrimary,
                     secondaryItems = enabledSortSecondary,
+                    hoveredIndex = hoveredPopupIndex,
+                    onItemBoundsChanged = { idx, rect -> popupItemBounds[idx] = rect },
                     onItemClick = { action ->
                         sortPopupOpen = false
+                        hoveredPopupIndex = null
                         action.onClick()
                     },
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
 
-            // Contextual "+" FAB Menu Fan-Out
-            if (!controller.selectionMode && !controller.inlineSearchActive && hasFab) {
+            // Contextual "+" FAB Menu Fan-Out (supports Drag-to-Select)
+            if (!controller.selectionMode && !effectiveInlineSearch && !controller.isSubScreen && hasFab) {
                 Box(modifier = Modifier.align(Alignment.End)) {
                     FloatingActionButtonMenu(
                         expanded = fabMenuExpanded,
                         button = {},
                         modifier = Modifier.padding(bottom = if (fabMenuExpanded) 6.dp else 0.dp),
                     ) {
-                        enabledFabActions.forEach { action ->
+                        enabledFabActions.forEachIndexed { idx, action ->
+                            val isHovered = hoveredFabIndex == idx
                             FloatingActionButtonMenuItem(
                                 onClick = {
                                     fabMenuExpanded = false
+                                    hoveredFabIndex = null
                                     action.onClick()
                                 },
+                                containerColor = if (isHovered) colorScheme.secondaryContainer else colorScheme.primaryContainer,
+                                contentColor = if (isHovered) colorScheme.onSecondaryContainer else colorScheme.onPrimaryContainer,
                                 text = { Text(stringResource(action.labelRes)) },
                                 icon = { Icon(action.icon, null) },
+                                modifier = Modifier
+                                    .onGloballyPositioned { coords ->
+                                        fabItemBounds[idx] = coords.boundsInRoot()
+                                    }
+                                    .graphicsLayer {
+                                        val s = if (isHovered) 1.04f else 1f
+                                        scaleX = s
+                                        scaleY = s
+                                    },
                             )
                         }
                     }
@@ -342,7 +436,8 @@ fun FolioMorphingBottomBar(
             AnimatedVisibility(
                 visible = controller.showScrollToTop &&
                     !controller.selectionMode &&
-                    !controller.inlineSearchActive &&
+                    !effectiveInlineSearch &&
+                    !controller.isSubScreen &&
                     !anyOverlayExpanded,
                 enter = if (reducedMotion) {
                     fadeIn(tween(80))
@@ -380,7 +475,7 @@ fun FolioMorphingBottomBar(
                 }
             }
 
-            // ONE SINGLE PERSISTENT MORPHING ROW — Outer containers NEVER unmount on mode change
+            // ONE SINGLE PERSISTENT MORPHING ROW — Outer containers NEVER unmount across ANY screen
             BoxWithConstraints(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
@@ -388,14 +483,18 @@ fun FolioMorphingBottomBar(
                 val totalW = maxWidth
                 val halfW = ((totalW - InterPillGap) / 2f).coerceAtLeast(120.dp)
                 val showMiddle = hasTasks
-                val showRight = controller.selectionMode || (!controller.inlineSearchActive && hasFab)
+                val showRight = when {
+                    effectiveInlineSearch -> false
+                    controller.selectionMode -> true
+                    controller.isSubScreen -> hasSubScreenFab || showSubScreenRightSearch
+                    else -> hasFab
+                }
 
                 val middleTargetW = if (showMiddle) TaskPillWidth else 0.dp
                 val rightTargetW = when {
-                    controller.inlineSearchActive -> 0.dp
+                    !showRight -> 0.dp
                     controller.selectionMode -> halfW
-                    hasFab -> FabSize
-                    else -> 0.dp
+                    else -> FabSize
                 }
                 val gap1Target = if (showMiddle) InterPillGap else 0.dp
                 val gap2Target = if (showRight) InterPillGap else 0.dp
@@ -407,24 +506,26 @@ fun FolioMorphingBottomBar(
                 val middleAlpha by animateFloatAsState(if (showMiddle) 1f else 0f, effectsFloatSpec, label = "dockMidA")
                 val rightAlpha by animateFloatAsState(if (showRight) 1f else 0f, effectsFloatSpec, label = "dockRightA")
 
-                val slot1MinW = when (leftKind) {
+                val slot1TargetMinW = when (leftKind) {
                     LeftPillKind.INLINE_SEARCH -> totalW
                     LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> halfW
-                    LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV -> 0.dp
+                    LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV, LeftPillKind.SUB_SCREEN -> 0.dp
                 }
-                val slot1MaxW = when (leftKind) {
+                val slot1TargetMaxW = when (leftKind) {
                     LeftPillKind.INLINE_SEARCH -> totalW
                     LeftPillKind.SELECTION_EDIT, LeftPillKind.SELECTION_ARCHIVE -> halfW
-                    LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV ->
+                    LeftPillKind.ROOT_TABS, LeftPillKind.SUBFOLDER_NAV, LeftPillKind.SUB_SCREEN ->
                         (totalW - middleTargetW - rightTargetW - gap1Target - gap2Target).coerceAtLeast(120.dp)
                 }
+                val slot1MinW by animateDpAsState(slot1TargetMinW, spatialDpSpec, label = "slot1MinW")
+                val slot1MaxW by animateDpAsState(slot1TargetMaxW, spatialDpSpec, label = "slot1MaxW")
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    // SLOT 1: Persistent Primary Pill (Gallery-clustered centered morph)
+                    // SLOT 1: Persistent Primary Pill
                     Surface(
                         shape = CircleShape,
                         color = colorScheme.surfaceContainerHigh,
@@ -436,6 +537,12 @@ fun FolioMorphingBottomBar(
                             .animateContentSize(
                                 animationSpec = if (reducedMotion) tween(70) else motionScheme.defaultSpatialSpec(),
                             )
+                            .graphicsLayer {
+                                // 1:1 subtle morph squeeze as predictive back progresses
+                                if (backProgress > 0f && (leftKind == LeftPillKind.SUBFOLDER_NAV || leftKind == LeftPillKind.SUB_SCREEN)) {
+                                    scaleX = 1f - backProgress * 0.06f
+                                }
+                            }
                             .clip(CircleShape),
                     ) {
                         AnimatedContent(
@@ -465,6 +572,7 @@ fun FolioMorphingBottomBar(
                                             )
                                         }
                                         if (hasSort) {
+                                            var sortCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                             FolioIconPillButton(
                                                 icon = Icons.AutoMirrored.Rounded.Sort,
                                                 contentDescription = stringResource(R.string.sort),
@@ -473,6 +581,29 @@ fun FolioMorphingBottomBar(
                                                     fabMenuExpanded = false
                                                     sortPopupOpen = !sortPopupOpen
                                                 },
+                                                modifier = Modifier
+                                                    .onGloballyPositioned { sortCoords = it }
+                                                    .dragToSelectTrigger(
+                                                        enabled = enabledSortPrimary.isNotEmpty(),
+                                                        touchSlop = viewConfig.touchSlop,
+                                                        getCoordinates = { sortCoords },
+                                                        itemBounds = popupItemBounds,
+                                                        onOpenMenu = {
+                                                            fabMenuExpanded = false
+                                                            sortPopupOpen = true
+                                                        },
+                                                        onHoverChanged = { idx ->
+                                                            if (idx != hoveredPopupIndex) {
+                                                                hoveredPopupIndex = idx
+                                                                if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            }
+                                                        },
+                                                        onDragCommit = { idx ->
+                                                            sortPopupOpen = false
+                                                            hoveredPopupIndex = null
+                                                            idx?.let { enabledSortPrimary.getOrNull(it)?.onClick() }
+                                                        },
+                                                    ),
                                             )
                                         }
                                         if (hasSearch) {
@@ -486,36 +617,145 @@ fun FolioMorphingBottomBar(
                                 }
 
                                 LeftPillKind.SUBFOLDER_NAV -> {
-                                    // Gallery-style tightly packed squircle buttons centered beside (+) FAB
+                                    // Gallery-style connected pill cluster matching media_1795749653646_cc27e9a8.png:
+                                    // [ (←) | [🔍 Search] | (🏠) ]
                                     Row(
                                         modifier = Modifier
                                             .height(PillHeight)
                                             .padding(horizontal = 6.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     ) {
-                                        FolioGallerySquircleButton(
-                                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                                            contentDescription = stringResource(R.string.back),
+                                        FolioConnectedPillButton(
+                                            shape = SubfolderBackShape,
+                                            containerColor = colorScheme.surfaceContainerHighest,
+                                            contentColor = colorScheme.onSurface,
                                             onClick = controller.onNavigateUp,
                                             onLongClick = controller.onNavigateToRoot,
-                                        )
-                                        if (hasSearch) {
-                                            FolioGallerySquircleButton(
-                                                icon = Icons.Rounded.Search,
-                                                contentDescription = stringResource(R.string.search),
-                                                onClick = triggerSearch,
+                                            modifier = Modifier
+                                                .width(52.dp)
+                                                .fillMaxHeight(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                                contentDescription = stringResource(R.string.back),
+                                                modifier = Modifier.size(20.dp),
                                             )
                                         }
-                                        FolioGallerySquircleButton(
-                                            icon = Icons.Rounded.Home,
-                                            contentDescription = stringResource(R.string.home),
+                                        if (hasSearch) {
+                                            FolioConnectedPillButton(
+                                                shape = SubfolderSearchShape,
+                                                containerColor = colorScheme.surfaceContainerHighest,
+                                                contentColor = colorScheme.onSurface,
+                                                onClick = triggerSearch,
+                                                modifier = Modifier
+                                                    .fillMaxHeight()
+                                                    .widthIn(min = 96.dp),
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center,
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Search,
+                                                        contentDescription = stringResource(R.string.search),
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(
+                                                        text = stringResource(R.string.search),
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        FolioConnectedPillButton(
+                                            shape = SubfolderHomeShape,
+                                            containerColor = colorScheme.secondaryContainer,
+                                            contentColor = colorScheme.onSecondaryContainer,
                                             onClick = controller.onNavigateToRoot,
-                                        )
+                                            modifier = Modifier
+                                                .width(52.dp)
+                                                .fillMaxHeight(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Home,
+                                                contentDescription = stringResource(R.string.home),
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                LeftPillKind.SUB_SCREEN -> {
+                                    // Consistent morphed sub-screen pill: [ (←) | Title (+ optional 🔍) ]
+                                    Row(
+                                        modifier = Modifier
+                                            .height(PillHeight)
+                                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        FolioConnectedPillButton(
+                                            shape = SubfolderBackShape,
+                                            containerColor = colorScheme.surfaceContainerHighest,
+                                            contentColor = colorScheme.onSurface,
+                                            onClick = controller.subScreenOnBack,
+                                            modifier = Modifier
+                                                .width(50.dp)
+                                                .fillMaxHeight(),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                                contentDescription = stringResource(R.string.back),
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .padding(start = 10.dp, end = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = controller.subScreenTitle,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.widthIn(max = 188.dp),
+                                            )
+                                            if (hasSubScreenSearch && hasSubScreenFab) {
+                                                Spacer(Modifier.width(6.dp))
+                                                FolioIconPillButton(
+                                                    icon = Icons.Rounded.Search,
+                                                    contentDescription = stringResource(R.string.search),
+                                                    iconSize = 18.dp,
+                                                    onClick = { subScreenSearchExpanded = true },
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
                                 LeftPillKind.INLINE_SEARCH -> {
+                                    val isSubSearch = controller.isSubScreen && subScreenSearchExpanded
+                                    val query = if (isSubSearch) controller.subScreenSearchQuery.orEmpty() else controller.inlineSearchQuery
+                                    val onQueryChange: (String) -> Unit = { q ->
+                                        if (isSubSearch) controller.subScreenOnSearchQueryChange?.invoke(q)
+                                        else controller.onInlineSearchQueryChange(q)
+                                    }
+                                    val onCloseSearch: () -> Unit = {
+                                        if (isSubSearch) {
+                                            controller.subScreenOnSearchQueryChange?.invoke("")
+                                            subScreenSearchExpanded = false
+                                        } else {
+                                            controller.onInlineSearchClose()
+                                        }
+                                    }
                                     val focusRequester = remember { FocusRequester() }
                                     LaunchedEffect(Unit) {
                                         runCatching { focusRequester.requestFocus() }
@@ -529,25 +769,31 @@ fun FolioMorphingBottomBar(
                                         FolioIconPillButton(
                                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
                                             contentDescription = stringResource(R.string.close_search),
-                                            onClick = controller.onInlineSearchClose,
+                                            onClick = onCloseSearch,
                                         )
                                         BasicTextField(
-                                            value = controller.inlineSearchQuery,
-                                            onValueChange = controller.onInlineSearchQueryChange,
+                                            value = query,
+                                            onValueChange = onQueryChange,
                                             singleLine = true,
                                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = colorScheme.onSurface),
                                             cursorBrush = SolidColor(colorScheme.primary),
                                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                            keyboardActions = KeyboardActions(onSearch = { controller.onOpenFullSearch() }),
+                                            keyboardActions = KeyboardActions(onSearch = {
+                                                if (!isSubSearch) controller.onOpenFullSearch()
+                                            }),
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .focusRequester(focusRequester)
                                                 .padding(horizontal = 6.dp),
                                             decorationBox = { innerTextField ->
                                                 Box(contentAlignment = Alignment.CenterStart) {
-                                                    if (controller.inlineSearchQuery.isEmpty()) {
+                                                    if (query.isEmpty()) {
                                                         Text(
-                                                            text = stringResource(R.string.search_files_hint),
+                                                            text = if (isSubSearch && controller.subScreenSearchHint.isNotBlank()) {
+                                                                controller.subScreenSearchHint
+                                                            } else {
+                                                                stringResource(R.string.search_files_hint)
+                                                            },
                                                             style = MaterialTheme.typography.bodyMedium,
                                                             color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                                             maxLines = 1,
@@ -558,15 +804,15 @@ fun FolioMorphingBottomBar(
                                                 }
                                             },
                                         )
-                                        if (controller.inlineSearchQuery.isNotEmpty()) {
+                                        if (query.isNotEmpty()) {
                                             FolioIconPillButton(
                                                 icon = Icons.Rounded.Close,
                                                 contentDescription = stringResource(R.string.clear_search),
                                                 iconSize = 18.dp,
-                                                onClick = { controller.onInlineSearchQueryChange("") },
+                                                onClick = { onQueryChange("") },
                                             )
                                         }
-                                        if (selectedDestination == "browser") {
+                                        if (!isSubSearch && selectedDestination == "browser") {
                                             Spacer(Modifier.width(4.dp))
                                             val scopeBg by animateColorAsState(
                                                 targetValue = if (controller.inlineSearchRecursive) {
@@ -765,7 +1011,7 @@ fun FolioMorphingBottomBar(
 
                     if (gap2 > 0.dp) Spacer(Modifier.width(gap2))
 
-                    // SLOT 3: Persistent Right Pill (Circular (+) FAB <-> Selection [Delete | More])
+                    // SLOT 3: Persistent Right Pill (Circular (+) FAB / SubScreen Action <-> Selection [Delete | More])
                     if (rightWidth > 1.dp) {
                         val rightShape = RoundedCornerShape(fabCornerRadius)
                         Surface(
@@ -773,7 +1019,7 @@ fun FolioMorphingBottomBar(
                             color = rightBg,
                             contentColor = rightFg,
                             shadowElevation = 6.dp,
-                            border = if (controller.selectionMode) {
+                            border = if (controller.selectionMode || showSubScreenRightSearch) {
                                 BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.35f))
                             } else {
                                 null
@@ -804,10 +1050,33 @@ fun FolioMorphingBottomBar(
                                             animationSpec = fastSpatialSpec,
                                             label = "fabRotation",
                                         )
+                                        var fabCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
+                                                .onGloballyPositioned { fabCoords = it }
                                                 .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
+                                                .dragToSelectTrigger(
+                                                    enabled = enabledFabActions.size > 1,
+                                                    touchSlop = viewConfig.touchSlop,
+                                                    getCoordinates = { fabCoords },
+                                                    itemBounds = fabItemBounds,
+                                                    onOpenMenu = {
+                                                        sortPopupOpen = false
+                                                        fabMenuExpanded = true
+                                                    },
+                                                    onHoverChanged = { idx ->
+                                                        if (idx != hoveredFabIndex) {
+                                                            hoveredFabIndex = idx
+                                                            if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        }
+                                                    },
+                                                    onDragCommit = { idx ->
+                                                        fabMenuExpanded = false
+                                                        hoveredFabIndex = null
+                                                        idx?.let { enabledFabActions.getOrNull(it)?.onClick() }
+                                                    },
+                                                )
                                                 .clickable(
                                                     interactionSource = fabInteraction,
                                                     indication = ripple(bounded = true),
@@ -834,8 +1103,50 @@ fun FolioMorphingBottomBar(
                                         }
                                     }
 
+                                    RightPillKind.SUB_SCREEN_ACTION -> {
+                                        val actionInteraction = remember { MutableInteractionSource() }
+                                        val pressed by actionInteraction.collectIsPressedAsState()
+                                        val pressScale by animateFloatAsState(
+                                            targetValue = if (pressed) 0.90f else 1f,
+                                            animationSpec = fastSpatialSpec,
+                                            label = "subActionScale",
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer(scaleX = pressScale, scaleY = pressScale)
+                                                .clickable(
+                                                    interactionSource = actionInteraction,
+                                                    indication = ripple(bounded = true),
+                                                    onClick = {
+                                                        if (hasSubScreenFab) {
+                                                            controller.subScreenOnFabClick?.invoke()
+                                                        } else if (showSubScreenRightSearch) {
+                                                            subScreenSearchExpanded = true
+                                                        }
+                                                    },
+                                                ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = if (hasSubScreenFab) {
+                                                    controller.subScreenFabIcon ?: Icons.Rounded.Add
+                                                } else {
+                                                    Icons.Rounded.Search
+                                                },
+                                                contentDescription = if (hasSubScreenFab) {
+                                                    controller.subScreenFabContentDescription ?: stringResource(R.string.add)
+                                                } else {
+                                                    stringResource(R.string.search)
+                                                },
+                                                modifier = Modifier.size(22.dp),
+                                            )
+                                        }
+                                    }
+
                                     RightPillKind.SELECTION_MANAGE -> {
                                         val actions = controller.selectionActions
+                                        var moreCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                                         Row(
                                             modifier = Modifier.fillMaxSize(),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -883,6 +1194,25 @@ fun FolioMorphingBottomBar(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .fillMaxHeight()
+                                                    .onGloballyPositioned { moreCoords = it }
+                                                    .dragToSelectTrigger(
+                                                        enabled = enabledSelPrimary.isNotEmpty(),
+                                                        touchSlop = viewConfig.touchSlop,
+                                                        getCoordinates = { moreCoords },
+                                                        itemBounds = popupItemBounds,
+                                                        onOpenMenu = { selectionPopupOpen = true },
+                                                        onHoverChanged = { idx ->
+                                                            if (idx != hoveredPopupIndex) {
+                                                                hoveredPopupIndex = idx
+                                                                if (idx != null) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            }
+                                                        },
+                                                        onDragCommit = { idx ->
+                                                            selectionPopupOpen = false
+                                                            hoveredPopupIndex = null
+                                                            idx?.let { enabledSelPrimary.getOrNull(it)?.onClick() }
+                                                        },
+                                                    )
                                                     .clickable(
                                                         enabled = enabledSelPrimary.isNotEmpty(),
                                                         onClick = { selectionPopupOpen = !selectionPopupOpen },
@@ -918,6 +1248,63 @@ fun FolioMorphingBottomBar(
 }
 
 /**
+ * Enables Gallery Share-style press-and-drag-upward selection on any overflow trigger.
+ * Tapping normally falls through to clickable; dragging upward > touchSlop opens the menu
+ * and highlights/selects whichever pill the finger releases over.
+ */
+private fun Modifier.dragToSelectTrigger(
+    enabled: Boolean,
+    touchSlop: Float,
+    getCoordinates: () -> LayoutCoordinates?,
+    itemBounds: Map<Int, Rect>,
+    onOpenMenu: () -> Unit,
+    onHoverChanged: (Int?) -> Unit,
+    onDragCommit: (Int?) -> Unit,
+): Modifier = if (!enabled) this else this.pointerInput(enabled) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var dragging = false
+        var lastHovered: Int? = null
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) {
+                if (dragging) {
+                    change.consume()
+                    onDragCommit(lastHovered)
+                }
+                break
+            }
+            val delta = change.position - down.position
+            if (!dragging && delta.y < -touchSlop && abs(delta.y) >= abs(delta.x)) {
+                dragging = true
+                onOpenMenu()
+            }
+            if (dragging) {
+                change.consume()
+                val coords = getCoordinates()
+                val rootPos = if (coords != null && coords.isAttached) {
+                    coords.localToRoot(change.position)
+                } else {
+                    null
+                }
+                val hit = if (rootPos != null) {
+                    itemBounds.entries.firstOrNull { (_, rect) ->
+                        rect.inflate(16f).contains(rootPos)
+                    }?.key
+                } else {
+                    null
+                }
+                if (hit != lastHovered) {
+                    lastHovered = hit
+                    onHoverChanged(hit)
+                }
+            }
+        }
+    }
+}
+
+/**
  * Compact, snappy Pixel Launcher-style popup:
  * Slim header pill (with optional ↕ page toggle) + single clean unified rounded card.
  */
@@ -930,6 +1317,8 @@ fun FolioSwitchableActionPopup(
     secondaryItems: List<FolioFabMenuAction>,
     onItemClick: (FolioFabMenuAction) -> Unit,
     modifier: Modifier = Modifier,
+    hoveredIndex: Int? = null,
+    onItemBoundsChanged: ((Int, Rect) -> Unit)? = null,
 ) {
     var showSecondary by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
@@ -947,7 +1336,6 @@ fun FolioSwitchableActionPopup(
         modifier = modifier.width(196.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        // Slim Header Pill
         Surface(
             shape = CircleShape,
             color = colorScheme.surfaceContainerHighest,
@@ -993,7 +1381,6 @@ fun FolioSwitchableActionPopup(
             }
         }
 
-        // Single Compact Unified Card (matches Pixel Launcher proportions)
         Surface(
             shape = RoundedCornerShape(22.dp),
             color = colorScheme.surfaceContainerHigh,
@@ -1013,12 +1400,16 @@ fun FolioSwitchableActionPopup(
                 Column(
                     modifier = Modifier.padding(vertical = 4.dp),
                 ) {
-                    activeItems.forEach { action ->
-                        val bg = if (action.selected) colorScheme.secondaryContainer else Color.Transparent
-                        val fg = if (action.selected) colorScheme.onSecondaryContainer else colorScheme.onSurface
+                    activeItems.forEachIndexed { idx, action ->
+                        val isHighlighted = action.selected || hoveredIndex == idx
+                        val bg = if (isHighlighted) colorScheme.secondaryContainer else Color.Transparent
+                        val fg = if (isHighlighted) colorScheme.onSecondaryContainer else colorScheme.onSurface
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .onGloballyPositioned { coords ->
+                                    onItemBoundsChanged?.invoke(idx, coords.boundsInRoot())
+                                }
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(bg)
@@ -1029,14 +1420,14 @@ fun FolioSwitchableActionPopup(
                             Icon(
                                 imageVector = action.icon,
                                 contentDescription = null,
-                                tint = if (action.selected) colorScheme.primary else colorScheme.onSurfaceVariant,
+                                tint = if (isHighlighted) colorScheme.primary else colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 text = stringResource(action.labelRes),
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (action.selected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Normal,
                                 color = fg,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1061,29 +1452,30 @@ fun FolioSwitchableActionPopup(
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun FolioGallerySquircleButton(
-    icon: ImageVector,
-    contentDescription: String,
+private fun FolioConnectedPillButton(
+    shape: Shape,
+    containerColor: Color,
+    contentColor: Color,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.91f else 1f,
+        targetValue = if (pressed) 0.92f else 1f,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "squircleScale",
+        label = "connectedPillScale",
     )
 
-    val shape = RoundedCornerShape(18.dp)
     Surface(
         shape = shape,
-        color = colorScheme.surfaceContainerHighest,
-        contentColor = colorScheme.onSurface,
-        border = BorderStroke(0.6.dp, colorScheme.outlineVariant.copy(alpha = 0.45f)),
-        modifier = Modifier
-            .size(46.dp)
+        color = containerColor,
+        contentColor = contentColor,
+        border = BorderStroke(0.5.dp, colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
             .graphicsLayer(scaleX = scale, scaleY = scale)
             .clip(shape)
             .combinedClickable(
@@ -1094,11 +1486,7 @@ private fun FolioGallerySquircleButton(
             ),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
-            )
+            content()
         }
     }
 }
@@ -1198,6 +1586,7 @@ private fun FolioIconPillButton(
     iconSize: Dp = 20.dp,
     isActive: Boolean = false,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -1215,7 +1604,7 @@ private fun FolioIconPillButton(
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(44.dp)
             .graphicsLayer(scaleX = scale, scaleY = scale)
             .clip(CircleShape)

@@ -505,11 +505,13 @@ fun PreviewBrowserScreen(
                 selectionMode -> selectedPaths = emptySet()
                 else -> navigateUp()
             }
-            backPreviewAnim.animateTo(0f, backSpring)
-            dockController.predictiveBackProgress = 0f
+            backPreviewAnim.animateTo(0f, backSpring) {
+                dockController.predictiveBackProgress = value
+            }
         } catch (_: CancellationException) {
-            backPreviewAnim.animateTo(0f, backSpring)
-            dockController.predictiveBackProgress = 0f
+            backPreviewAnim.animateTo(0f, backSpring) {
+                dockController.predictiveBackProgress = value
+            }
         }
     }
 

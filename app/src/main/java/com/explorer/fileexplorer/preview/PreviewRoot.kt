@@ -60,15 +60,16 @@ fun FolioPreviewRoot(
                 dockController.predictiveBackEdgeSign = if (event.swipeEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
             }
             navigateBack()
-            dockController.predictiveBackProgress = 0f
-            backPreviewAnim.animateTo(0f)
+            backPreviewAnim.animateTo(0f) {
+                dockController.predictiveBackProgress = value
+            }
         } catch (_: CancellationException) {
-            dockController.predictiveBackProgress = 0f
-            backPreviewAnim.animateTo(0f)
+            backPreviewAnim.animateTo(0f) {
+                dockController.predictiveBackProgress = value
+            }
         }
     }
 
-    val showDock = currentRoute == PreviewRoute.BROWSER || currentRoute == PreviewRoute.COLLECTIONS
     val selectedDestination = if (currentRoute == PreviewRoute.COLLECTIONS) "collections" else "browser"
 
     CompositionLocalProvider(LocalFolioDockController provides dockController) {
@@ -118,20 +119,18 @@ fun FolioPreviewRoot(
                 }
             }
 
-            if (showDock) {
-                FolioMorphingBottomBar(
-                    selectedDestination = selectedDestination,
-                    onDestinationSelected = { dest ->
-                        when (dest) {
-                            "browser" -> navigateTo(PreviewRoute.BROWSER)
-                            "collections" -> navigateTo(PreviewRoute.COLLECTIONS)
-                        }
-                    },
-                    controller = dockController,
-                    onSearchClick = { dockController.onInlineSearchOpen?.invoke() },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
+            FolioMorphingBottomBar(
+                selectedDestination = selectedDestination,
+                onDestinationSelected = { dest ->
+                    when (dest) {
+                        "browser" -> navigateTo(PreviewRoute.BROWSER)
+                        "collections" -> navigateTo(PreviewRoute.COLLECTIONS)
+                    }
+                },
+                controller = dockController,
+                onSearchClick = { dockController.onInlineSearchOpen?.invoke() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }

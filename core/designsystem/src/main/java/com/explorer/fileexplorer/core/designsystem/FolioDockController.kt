@@ -81,6 +81,17 @@ class FolioDockController {
     var predictiveBackProgress by mutableStateOf(0f)
     var predictiveBackEdgeSign by mutableStateOf(1f)
 
+    // Sub-screen mode (keeps bottom bar persistent & morphing across ALL screens)
+    var isSubScreen by mutableStateOf(false)
+    var subScreenTitle by mutableStateOf("")
+    var subScreenOnBack by mutableStateOf<() -> Unit>({})
+    var subScreenSearchQuery by mutableStateOf<String?>(null)
+    var subScreenSearchHint by mutableStateOf("")
+    var subScreenOnSearchQueryChange by mutableStateOf<((String) -> Unit)?>(null)
+    var subScreenFabIcon by mutableStateOf<ImageVector?>(null)
+    var subScreenFabContentDescription by mutableStateOf<String?>(null)
+    var subScreenOnFabClick by mutableStateOf<(() -> Unit)?>(null)
+
     fun onFastScrollDown() { isDockMinimizedByScroll = true }
     fun onFastScrollUp() { isDockMinimizedByScroll = false }
     fun resetScrollMorph() { isDockMinimizedByScroll = false }
@@ -120,6 +131,15 @@ class FolioDockController {
         fabMenuItems = emptyList()
         isDockMinimizedByScroll = false
         predictiveBackProgress = 0f
+        isSubScreen = false
+        subScreenTitle = ""
+        subScreenOnBack = {}
+        subScreenSearchQuery = null
+        subScreenSearchHint = ""
+        subScreenOnSearchQueryChange = null
+        subScreenFabIcon = null
+        subScreenFabContentDescription = null
+        subScreenOnFabClick = null
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -46,12 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
 import com.explorer.fileexplorer.core.designsystem.FolioSectionLabel
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
-import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 
 @Composable
@@ -60,6 +60,8 @@ fun PreviewSecurityScreen(
 ) {
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val listState = rememberLazyListState()
+    val dockController = LocalFolioDockController.current
+    val title = stringResource(DesignSystemR.string.security)
     var prevIdx by remember { mutableIntStateOf(0) }
     var prevOff by remember { mutableIntStateOf(0) }
     var isScrollingDown by remember { mutableStateOf(false) }
@@ -75,6 +77,22 @@ fun PreviewSecurityScreen(
         }
         prevIdx = idx
         prevOff = off
+        dockController.isDockMinimizedByScroll = isScrollingDown
+    }
+
+    LaunchedEffect(title) {
+        dockController.claimOwnership("security")
+        dockController.contextResetKey = "security"
+        dockController.isSubScreen = true
+        dockController.subScreenTitle = title
+        dockController.subScreenOnBack = onNavigateBack
+        dockController.subScreenOnFabClick = null
+        dockController.subScreenFabIcon = null
+        dockController.subScreenOnSearchQueryChange = null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { dockController.clearScreenBindings("security") }
     }
 
     var appLockEnabled by remember { mutableStateOf(true) }
@@ -259,17 +277,6 @@ fun PreviewSecurityScreen(
         FolioTopScrim(
             height = statusBarTop + 16.dp,
             modifier = Modifier.align(Alignment.TopCenter),
-        )
-        FolioBottomScrim(
-            height = 112.dp,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.security),
-            onNavigateBack = onNavigateBack,
-            onFabClick = null,
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }

@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,16 +59,28 @@ import com.explorer.fileexplorer.core.designsystem.AccentAmber
 import com.explorer.fileexplorer.core.designsystem.AccentBlue
 import com.explorer.fileexplorer.core.designsystem.AccentGreen
 import com.explorer.fileexplorer.core.designsystem.AccentPurple
-import com.explorer.fileexplorer.core.designsystem.FolioBottomScrim
+import com.explorer.fileexplorer.core.designsystem.FolioDockController
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedCard
 import com.explorer.fileexplorer.core.designsystem.FolioSegmentedColumn
 import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBarDefaults
-import com.explorer.fileexplorer.core.designsystem.FolioSubScreenBottomBar
 import com.explorer.fileexplorer.core.designsystem.FolioTopScrim
+import com.explorer.fileexplorer.core.designsystem.LocalFolioDockController
 import com.explorer.fileexplorer.core.designsystem.R as DesignSystemR
 
 @Composable
-private fun rememberIsScrollingDown(listState: LazyListState): Boolean {
+private fun BindSubScreenDock(
+    owner: String,
+    title: String,
+    listState: LazyListState,
+    onNavigateBack: () -> Unit,
+    searchQuery: String? = null,
+    searchHint: String = "",
+    onSearchQueryChange: ((String) -> Unit)? = null,
+    fabIcon: ImageVector? = null,
+    fabContentDescription: String? = null,
+    onFabClick: (() -> Unit)? = null,
+) {
+    val dockController: FolioDockController = LocalFolioDockController.current
     var prevIdx by remember { mutableIntStateOf(0) }
     var prevOff by remember { mutableIntStateOf(0) }
     var isScrollingDown by remember { mutableStateOf(false) }
@@ -82,8 +96,26 @@ private fun rememberIsScrollingDown(listState: LazyListState): Boolean {
         }
         prevIdx = idx
         prevOff = off
+        dockController.isDockMinimizedByScroll = isScrollingDown
     }
-    return isScrollingDown
+
+    LaunchedEffect(owner, title, searchQuery, fabIcon, onFabClick != null) {
+        dockController.claimOwnership(owner)
+        dockController.contextResetKey = owner
+        dockController.isSubScreen = true
+        dockController.subScreenTitle = title
+        dockController.subScreenOnBack = onNavigateBack
+        dockController.subScreenSearchQuery = searchQuery
+        dockController.subScreenSearchHint = searchHint
+        dockController.subScreenOnSearchQueryChange = onSearchQueryChange
+        dockController.subScreenFabIcon = fabIcon
+        dockController.subScreenFabContentDescription = fabContentDescription
+        dockController.subScreenOnFabClick = onFabClick
+    }
+
+    DisposableEffect(owner) {
+        onDispose { dockController.clearScreenBindings(owner) }
+    }
 }
 
 @Composable
@@ -93,7 +125,6 @@ fun PreviewAppsScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
-    val isScrollingDown = rememberIsScrollingDown(listState)
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredApps = remember(searchQuery) {
@@ -103,6 +134,16 @@ fun PreviewAppsScreen(
                 it.packageName.contains(searchQuery, ignoreCase = true)
         }
     }
+
+    BindSubScreenDock(
+        owner = "apps",
+        title = stringResource(DesignSystemR.string.apps_count, filteredApps.size),
+        listState = listState,
+        onNavigateBack = onNavigateBack,
+        searchQuery = searchQuery,
+        searchHint = stringResource(DesignSystemR.string.search_apps_hint),
+        onSearchQueryChange = { searchQuery = it },
+    )
 
     Box(
         modifier = Modifier
@@ -152,17 +193,6 @@ fun PreviewAppsScreen(
         }
 
         FolioTopScrim(height = statusBarTop + 16.dp, modifier = Modifier.align(Alignment.TopCenter))
-        FolioBottomScrim(height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp, modifier = Modifier.align(Alignment.BottomCenter))
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.apps_count, filteredApps.size),
-            onNavigateBack = onNavigateBack,
-            searchQuery = searchQuery,
-            searchHint = stringResource(DesignSystemR.string.search_apps_hint),
-            onSearchQueryChange = { searchQuery = it },
-            onFabClick = null,
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 
@@ -174,8 +204,17 @@ fun PreviewTrashScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
-    val isScrollingDown = rememberIsScrollingDown(listState)
     val items = remember { mutableStateListOf(*PreviewMockData.trashItems.toTypedArray()) }
+
+    BindSubScreenDock(
+        owner = "trash",
+        title = stringResource(DesignSystemR.string.trash),
+        listState = listState,
+        onNavigateBack = onNavigateBack,
+        fabIcon = if (items.isNotEmpty()) Icons.Rounded.DeleteSweep else null,
+        fabContentDescription = stringResource(DesignSystemR.string.empty_trash),
+        onFabClick = if (items.isNotEmpty()) { { items.clear() } } else null,
+    )
 
     Box(
         modifier = Modifier
@@ -234,16 +273,6 @@ fun PreviewTrashScreen(
         }
 
         FolioTopScrim(height = statusBarTop + 16.dp, modifier = Modifier.align(Alignment.TopCenter))
-        FolioBottomScrim(height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp, modifier = Modifier.align(Alignment.BottomCenter))
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.trash),
-            onNavigateBack = onNavigateBack,
-            fabIcon = if (items.isNotEmpty()) Icons.Rounded.DeleteSweep else null,
-            fabContentDescription = stringResource(DesignSystemR.string.empty_trash),
-            onFabClick = if (items.isNotEmpty()) { { items.clear() } } else null,
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 
@@ -255,7 +284,18 @@ fun PreviewNetworkScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
-    val isScrollingDown = rememberIsScrollingDown(listState)
+
+    BindSubScreenDock(
+        owner = "network",
+        title = stringResource(DesignSystemR.string.network),
+        listState = listState,
+        onNavigateBack = onNavigateBack,
+        fabIcon = Icons.Rounded.Add,
+        fabContentDescription = stringResource(DesignSystemR.string.add_connection),
+        onFabClick = {
+            Toast.makeText(context, context.getString(DesignSystemR.string.add_connection), Toast.LENGTH_SHORT).show()
+        },
+    )
 
     Box(
         modifier = Modifier
@@ -314,18 +354,6 @@ fun PreviewNetworkScreen(
         }
 
         FolioTopScrim(height = statusBarTop + 16.dp, modifier = Modifier.align(Alignment.TopCenter))
-        FolioBottomScrim(height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp, modifier = Modifier.align(Alignment.BottomCenter))
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.network),
-            onNavigateBack = onNavigateBack,
-            fabIcon = Icons.Rounded.Add,
-            fabContentDescription = stringResource(DesignSystemR.string.add_connection),
-            onFabClick = {
-                Toast.makeText(context, context.getString(DesignSystemR.string.add_connection), Toast.LENGTH_SHORT).show()
-            },
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 
@@ -337,7 +365,18 @@ fun PreviewCloudScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
-    val isScrollingDown = rememberIsScrollingDown(listState)
+
+    BindSubScreenDock(
+        owner = "cloud",
+        title = stringResource(DesignSystemR.string.cloud_storage),
+        listState = listState,
+        onNavigateBack = onNavigateBack,
+        fabIcon = Icons.Rounded.Add,
+        fabContentDescription = stringResource(DesignSystemR.string.add_account),
+        onFabClick = {
+            Toast.makeText(context, context.getString(DesignSystemR.string.add_account), Toast.LENGTH_SHORT).show()
+        },
+    )
 
     Box(
         modifier = Modifier
@@ -389,18 +428,6 @@ fun PreviewCloudScreen(
         }
 
         FolioTopScrim(height = statusBarTop + 16.dp, modifier = Modifier.align(Alignment.TopCenter))
-        FolioBottomScrim(height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp, modifier = Modifier.align(Alignment.BottomCenter))
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.cloud_storage),
-            onNavigateBack = onNavigateBack,
-            fabIcon = Icons.Rounded.Add,
-            fabContentDescription = stringResource(DesignSystemR.string.add_account),
-            onFabClick = {
-                Toast.makeText(context, context.getString(DesignSystemR.string.add_account), Toast.LENGTH_SHORT).show()
-            },
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 
@@ -412,10 +439,21 @@ fun PreviewStorageAnalyzerScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
-    val isScrollingDown = rememberIsScrollingDown(listState)
     var selectedTab by remember { mutableIntStateOf(0) }
 
     val segmentColors = listOf(AccentBlue, AccentAmber, AccentPurple, AccentGreen)
+
+    BindSubScreenDock(
+        owner = "analyzer",
+        title = stringResource(DesignSystemR.string.storage_analyzer),
+        listState = listState,
+        onNavigateBack = onNavigateBack,
+        fabIcon = Icons.Rounded.Refresh,
+        fabContentDescription = stringResource(DesignSystemR.string.rescan_storage),
+        onFabClick = {
+            Toast.makeText(context, context.getString(DesignSystemR.string.rescan_storage), Toast.LENGTH_SHORT).show()
+        },
+    )
 
     Box(
         modifier = Modifier
@@ -508,17 +546,5 @@ fun PreviewStorageAnalyzerScreen(
         }
 
         FolioTopScrim(height = statusBarTop + 16.dp, modifier = Modifier.align(Alignment.TopCenter))
-        FolioBottomScrim(height = FolioSubScreenBarDefaults.BottomBarHeight + 16.dp, modifier = Modifier.align(Alignment.BottomCenter))
-        FolioSubScreenBottomBar(
-            title = stringResource(DesignSystemR.string.storage_analyzer),
-            onNavigateBack = onNavigateBack,
-            fabIcon = Icons.Rounded.Refresh,
-            fabContentDescription = stringResource(DesignSystemR.string.rescan_storage),
-            onFabClick = {
-                Toast.makeText(context, context.getString(DesignSystemR.string.rescan_storage), Toast.LENGTH_SHORT).show()
-            },
-            scrollCompact = isScrollingDown,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
