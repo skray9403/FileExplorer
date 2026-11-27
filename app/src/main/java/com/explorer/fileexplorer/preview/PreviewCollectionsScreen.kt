@@ -107,6 +107,11 @@ fun PreviewCollectionsScreen(
 
     LaunchedEffect(selectedCategory, showScrollToTop, inlineSearchOpen, searchQuery) {
         dockController.claimOwnership("collections")
+        dockController.isSubScreen = false
+        dockController.subScreenTitle = ""
+        dockController.subScreenOnFabClick = null
+        dockController.subScreenFabIcon = null
+        dockController.subScreenOnSearchQueryChange = null
         dockController.contextResetKey = "collections|${selectedCategory?.id ?: "root"}"
         dockController.isSubfolder = selectedCategory != null
         dockController.onNavigateUp = {

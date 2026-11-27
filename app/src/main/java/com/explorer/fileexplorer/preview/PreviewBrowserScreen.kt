@@ -286,6 +286,11 @@ fun PreviewBrowserScreen(
         showScrollToTop,
     ) {
         dockController.claimOwnership("browser")
+        dockController.isSubScreen = false
+        dockController.subScreenTitle = ""
+        dockController.subScreenOnFabClick = null
+        dockController.subScreenFabIcon = null
+        dockController.subScreenOnSearchQueryChange = null
         dockController.contextResetKey = "browser|$currentPath"
         dockController.isSubfolder = !isAtRoot
         dockController.selectionMode = selectionMode

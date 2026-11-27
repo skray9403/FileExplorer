@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -71,6 +72,16 @@ fun FolioPreviewRoot(
     }
 
     val selectedDestination = if (currentRoute == PreviewRoute.COLLECTIONS) "collections" else "browser"
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == PreviewRoute.BROWSER || currentRoute == PreviewRoute.COLLECTIONS) {
+            dockController.isSubScreen = false
+            dockController.subScreenTitle = ""
+            dockController.subScreenOnFabClick = null
+            dockController.subScreenFabIcon = null
+            dockController.subScreenOnSearchQueryChange = null
+        }
+    }
 
     CompositionLocalProvider(LocalFolioDockController provides dockController) {
         Box(modifier = Modifier.fillMaxSize()) {
